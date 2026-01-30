@@ -58,7 +58,7 @@ export interface TeamMember {
   invitedBy: string;
 }
 
-export type TeamRole = 'owner' | 'admin' | 'agent' | 'assistant';
+export type TeamRole = 'owner' | 'admin' | 'broker' | 'agent' | 'assistant';
 
 // ============ LEADS ============
 

@@ -9,7 +9,8 @@ import type {
   CreditLedgerEntry,
   Notification,
   Task,
-  AgentMetrics
+  AgentMetrics,
+  LeadActivity,
 } from '@/types/agents';
 
 export const mockAgent: Agent = {
@@ -593,3 +594,74 @@ export const mockMetrics: AgentMetrics = {
   closedWonRate: 12,
   healthScore: 78,
 };
+
+export const mockLeadActivities: LeadActivity[] = [
+  {
+    id: 'act-1',
+    leadId: 'lead-1',
+    type: 'message_received',
+    description: 'Nuevo mensaje de María García',
+    metadata: { channel: 'chat' },
+    createdBy: 'lead-1',
+    createdAt: new Date('2026-01-28T14:00:00'),
+  },
+  {
+    id: 'act-2',
+    leadId: 'lead-1',
+    type: 'appointment_scheduled',
+    description: 'Cita agendada para sábado 11:00',
+    metadata: { appointmentId: 'apt-2' },
+    createdBy: 'agent-1',
+    createdAt: new Date('2026-01-28T14:05:00'),
+  },
+  {
+    id: 'act-3',
+    leadId: 'lead-2',
+    type: 'call_made',
+    description: 'Llamada de seguimiento realizada',
+    createdBy: 'agent-1',
+    createdAt: new Date('2026-01-28T12:00:00'),
+  },
+  {
+    id: 'act-4',
+    leadId: 'lead-2',
+    type: 'note_added',
+    description: 'Prefiere citas después de las 6pm; vive en Querétaro y viaja a CDMX.',
+    createdBy: 'agent-1',
+    createdAt: new Date('2026-01-28T12:10:00'),
+  },
+  {
+    id: 'act-5',
+    leadId: 'lead-3',
+    type: 'stage_change',
+    description: 'Lead movido a Cita Agendada',
+    metadata: { from: 'engaged', to: 'appointment_set' },
+    createdBy: 'agent-1',
+    createdAt: new Date('2026-01-27T10:00:00'),
+  },
+  {
+    id: 'act-6',
+    leadId: 'lead-5',
+    type: 'appointment_completed',
+    description: 'Tour completado, interesada en oferta',
+    metadata: { appointmentId: 'apt-3' },
+    createdBy: 'agent-1',
+    createdAt: new Date('2026-01-26T11:30:00'),
+  },
+  {
+    id: 'act-7',
+    leadId: 'lead-6',
+    type: 'message_sent',
+    description: 'Se envió brochure y términos de oferta',
+    createdBy: 'agent-1',
+    createdAt: new Date('2026-01-25T09:00:00'),
+  },
+  {
+    id: 'act-8',
+    leadId: 'lead-4',
+    type: 'assignment_changed',
+    description: 'Asignado a Carlos Mendez',
+    createdBy: 'agent-1',
+    createdAt: new Date('2026-01-24T08:30:00'),
+  },
+];

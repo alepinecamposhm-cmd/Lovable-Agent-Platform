@@ -22,6 +22,7 @@ import AgentCredits from "./pages/agents/credits";
 import AgentReports from "./pages/agents/reports";
 import AgentExperienceReport from "./pages/agents/reports-experience";
 import AgentRoiReport from "./pages/agents/reports-roi";
+import AgentTeamReport from "./pages/agents/reports-team";
 import AgentTeam from "./pages/agents/team";
 import AgentSettings from "./pages/agents/settings";
 import AgentRoadmap from "./pages/agents/roadmap";
@@ -62,6 +63,7 @@ const App = () => (
             <Route path="reports" element={<AgentReports />} />
             <Route path="reports/experience" element={<AgentExperienceReport />} />
             <Route path="reports/roi" element={<AgentRoiReport />} />
+            <Route path="reports/team" element={<AgentTeamReport />} />
             <Route path="roadmap" element={<AgentRoadmap />} />
             <Route path="notifications" element={<AgentNotifications />} />
             <Route path="tasks" element={<AgentTasks />} />

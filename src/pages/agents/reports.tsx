@@ -98,6 +98,9 @@ export default function AgentReports() {
           <Button variant="outline" asChild>
             <a href="/agents/reports/roi">ROI Créditos</a>
           </Button>
+          <Button variant="outline" asChild>
+            <a href="/agents/reports/team">Team Performance</a>
+          </Button>
           <Badge variant="secondary" className="gap-2">
             <BarChart3 className="h-4 w-4" />
             {upcoming} citas programadas

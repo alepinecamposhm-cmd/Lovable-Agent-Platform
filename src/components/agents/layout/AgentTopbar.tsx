@@ -22,6 +22,7 @@ import {
 } from '@/lib/agents/notifications/store';
 import { useTaskStore } from '@/lib/agents/tasks/store';
 import { useNavigate } from 'react-router-dom';
+import { mockCreditAccount } from '@/lib/agents/fixtures';
 
 interface AgentTopbarProps {
   onOpenCommand: () => void;
@@ -64,6 +65,27 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
 
         {/* Right side actions */}
         <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={mockCreditAccount.balance <= mockCreditAccount.lowBalanceThreshold ? 'default' : 'outline'}
+                size="sm"
+                className={cn(
+                  'gap-2 h-9',
+                  mockCreditAccount.balance <= mockCreditAccount.lowBalanceThreshold && 'animate-pulse'
+                )}
+                onClick={() => {
+                  navigate('/agents/credits');
+                  window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'credits.low_click', balance: mockCreditAccount.balance } }));
+                }}
+              >
+                <span className="text-xs font-semibold">{mockCreditAccount.balance} cr</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              Saldo de créditos · umbral {mockCreditAccount.lowBalanceThreshold}
+            </TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

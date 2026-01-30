@@ -28,6 +28,8 @@ import type { Conversation, Message } from '@/types/agents';
 import { add as addNotification, markRead as markNotificationRead, useNotificationStore } from '@/lib/agents/notifications/store';
 import { addTask } from '@/lib/agents/tasks/store';
 import { toast } from '@/components/ui/use-toast';
+import { useLeadStore, markLeadSpam, restoreLead } from '@/lib/agents/leads/store';
+import { addAuditEvent } from '@/lib/audit/store';
 
 const templates = [
   { id: 't1', label: 'Saludo inicial', content: '¡Hola! Gracias por tu interés. Estoy aquí para ayudarte a encontrar tu propiedad ideal.' },
@@ -166,11 +168,20 @@ export default function AgentInbox() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const slaLeads = useMemo(() => mockLeads.filter((l) => l.stage === 'new'), []);
+  const { leads } = useLeadStore();
+  const spamLeadIds = useMemo(() => new Set(leads.filter((l) => l.isSpam).map((l) => l.id)), [leads]);
+  const selectedLead = useMemo(
+    () => leads.find((l) => l.id === selectedConversation?.leadId),
+    [leads, selectedConversation?.leadId]
+  );
 
-  const filteredConversations = conversations.filter(conv =>
-    conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.lead?.lastName?.toLowerCase().includes(searchQuery.toLowerCase())
-  ).filter(conv => !onlyUnreadConv || (conv.unreadCount ?? 0) > 0);
+  const filteredConversations = conversations
+    .filter(conv =>
+      conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conv.lead?.lastName?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .filter(conv => !onlyUnreadConv || (conv.unreadCount ?? 0) > 0)
+    .filter(conv => !spamLeadIds.has(conv.leadId));
 
   const conversationMessages = messages.filter(
     msg => msg.conversationId === selectedConversation?.id
@@ -398,6 +409,9 @@ export default function AgentInbox() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {selectedLead?.isSpam && (
+                    <Badge variant="destructive" className="gap-1 text-xs">Spam</Badge>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -416,6 +430,37 @@ export default function AgentInbox() {
                   >
                     Crear tarea
                   </Button>
+                  {selectedLead?.isSpam ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        restoreLead(selectedConversation.leadId);
+                        addAuditEvent({ action: 'lead.spam_restored', payload: { leadId: selectedConversation.leadId } });
+                        track('lead.spam_restored', { properties: { leadId: selectedConversation.leadId } });
+                        toast({ title: 'Restaurado', description: 'El lead vuelve al inbox.' });
+                      }}
+                    >
+                      Quitar spam
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        const ok = window.confirm('¿Marcar este lead como spam? Se ocultará del inbox.');
+                        if (!ok) return;
+                        markLeadSpam(selectedConversation.leadId, 'manual_mark_inbox');
+                        addAuditEvent({ action: 'lead.spam_marked', payload: { leadId: selectedConversation.leadId } });
+                        track('lead.spam_marked', { properties: { leadId: selectedConversation.leadId } });
+                        toast({ title: 'Lead marcado spam', description: 'Se ocultará del inbox.' });
+                        // remove from list
+                        setSelectedConversation(null);
+                      }}
+                    >
+                      Spam
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon">
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>

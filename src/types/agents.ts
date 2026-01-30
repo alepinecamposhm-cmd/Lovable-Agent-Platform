@@ -82,6 +82,8 @@ export interface Lead {
   preferredZones?: string[];
   notes?: string;
   tags?: string[];
+  isSpam?: boolean;
+  spamReason?: string;
   lastContactedAt?: Date;
   lastActivityAt?: Date;
   nextFollowUpAt?: Date;

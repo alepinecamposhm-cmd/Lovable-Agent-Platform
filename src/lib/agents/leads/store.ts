@@ -13,6 +13,7 @@ function load(): Lead[] {
   try {
     const parsed: Lead[] = JSON.parse(raw).map((lead: any) => ({
       ...lead,
+      isSpam: lead.isSpam || false,
       createdAt: lead.createdAt ? parseISO(lead.createdAt) : new Date(),
       updatedAt: lead.updatedAt ? parseISO(lead.updatedAt) : new Date(),
       lastContactedAt: lead.lastContactedAt ? parseISO(lead.lastContactedAt) : undefined,
@@ -32,6 +33,7 @@ function save(data: Lead[]) {
   if (typeof window === 'undefined') return;
   const serializable = data.map((lead) => ({
     ...lead,
+    isSpam: lead.isSpam || false,
     createdAt: formatISO(lead.createdAt),
     updatedAt: formatISO(lead.updatedAt),
     lastContactedAt: lead.lastContactedAt ? formatISO(lead.lastContactedAt) : undefined,
@@ -108,6 +110,8 @@ export function addLead(input: LeadInput): Lead {
     closedAt: input.closedAt,
     closeReason: input.closeReason,
     teamId: input.teamId,
+    isSpam: input.isSpam ?? false,
+    spamReason: input.spamReason,
   };
 
   leads = [newLead, ...leads];
@@ -124,6 +128,22 @@ export function updateLeadNotes(id: string, notes: string) {
 
 export function updateLeadTags(id: string, tags: string[]) {
   leads = leads.map((lead) => (lead.id === id ? { ...lead, tags, updatedAt: new Date() } : lead));
+  save(leads);
+  emit();
+}
+
+export function markLeadSpam(id: string, reason?: string) {
+  leads = leads.map((lead) =>
+    lead.id === id ? { ...lead, isSpam: true, spamReason: reason || 'spam_mark', updatedAt: new Date() } : lead
+  );
+  save(leads);
+  emit();
+}
+
+export function restoreLead(id: string) {
+  leads = leads.map((lead) =>
+    lead.id === id ? { ...lead, isSpam: false, spamReason: undefined, updatedAt: new Date() } : lead
+  );
   save(leads);
   emit();
 }

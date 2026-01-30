@@ -20,6 +20,7 @@ export interface Notification {
   actionUrl?: string;
   createdAt: Date;
   status: NotificationStatus;
+  silenced?: boolean;
 }
 
 export interface QuietHoursState {
@@ -31,6 +32,7 @@ export interface QuietHoursState {
     email: boolean;
     sms: boolean;
   };
+  weekends?: boolean;
 }
 
 const STORAGE_KEY = 'agenthub_notifications';
@@ -106,6 +108,7 @@ const defaultQuiet: QuietHoursState = {
   start: '22:00',
   end: '07:00',
   channels: { push: true, email: true, sms: false },
+  weekends: true,
 };
 
 function loadQuiet(): QuietHoursState {
@@ -145,6 +148,7 @@ export function add(input: Omit<Notification, 'id' | 'status' | 'createdAt'> & {
     id: `notif-${globalThis.crypto?.randomUUID?.() || Date.now()}`,
     status: 'unread',
     createdAt: input.createdAt ?? new Date(),
+    silenced: isQuietHoursNow(),
     ...input,
   };
   notifications = [notif, ...notifications];
@@ -160,6 +164,12 @@ export function markRead(id: string) {
 
 export function markAllRead() {
   notifications = notifications.map((n) => ({ ...n, status: 'read' }));
+  save(notifications);
+  emit();
+}
+
+export function removeNotification(id: string) {
+  notifications = notifications.filter((n) => n.id !== id);
   save(notifications);
   emit();
 }
@@ -185,6 +195,8 @@ export function getQuietHoursState(): QuietHoursState {
 
 export function isQuietHoursNow(date = new Date()): boolean {
   if (!quietHours.enabled) return false;
+  const day = date.getDay(); // 0 Sunday, 6 Saturday
+  if (quietHours.weekends === false && (day === 0 || day === 6)) return false;
   const [startH, startM] = quietHours.start.split(':').map(Number);
   const [endH, endM] = quietHours.end.split(':').map(Number);
   const start = startH * 60 + startM;
@@ -237,5 +249,13 @@ export function useNotificationStore(): {
     subscribe,
     getSnapshot,
     getSnapshot // SSR snapshot (same logic)
+  );
+}
+
+export function useNotificationPrefs(): QuietHoursState {
+  return useSyncExternalStore(
+    subscribe,
+    () => getQuietHoursState(),
+    () => getQuietHoursState()
   );
 }

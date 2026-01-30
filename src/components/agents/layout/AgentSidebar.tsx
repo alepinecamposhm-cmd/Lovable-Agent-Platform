@@ -16,6 +16,7 @@ import {
   Home,
   AlarmClock,
   Route,
+  Contact2,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -45,6 +46,7 @@ const mainNavItems = [
 ];
 
 const secondaryNavItems = [
+  { title: 'Contactos', url: '/agents/contacts', icon: Contact2 },
   { title: 'Créditos', url: '/agents/credits', icon: CreditCard },
   { title: 'Equipo', url: '/agents/team', icon: UsersRound },
   { title: 'Ruteo', url: '/agents/routing', icon: Route },

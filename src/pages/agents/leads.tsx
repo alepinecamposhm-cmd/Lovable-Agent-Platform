@@ -51,6 +51,8 @@ import { matchAgentWithAudit } from '@/lib/agents/routing/store';
 import { mockTeamAgents } from '@/lib/agents/fixtures';
 import { addTask } from '@/lib/agents/tasks/store';
 import { evaluateReminders } from '@/lib/agents/reminders/store';
+import { useLeadStore, addLead, updateLeadStage, markLeadSpam, restoreLead } from '@/lib/agents/leads/store';
+import { addAuditEvent } from '@/lib/audit/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -214,7 +216,9 @@ function StageColumn({ stage, leads, unreadIds }: StageColumnProps) {
 }
 
 export default function AgentLeads() {
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const { leads } = useLeadStore();
+  const activeLeads = useMemo(() => leads.filter((l) => !l.isSpam), [leads]);
+  const spamLeads = useMemo(() => leads.filter((l) => l.isSpam), [leads]);
   const { notifications } = useNotificationStore();
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
   const [searchQuery, setSearchQuery] = useState('');
@@ -223,20 +227,14 @@ export default function AgentLeads() {
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const staleCount = useMemo(
-    () => leads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
-    [leads]
+    () => activeLeads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
+    [activeLeads]
   );
 
   useEffect(() => {
-    fetch('/api/leads')
-      .then((res) => res.json())
-      .then((data) => setLeads(data));
-  }, []);
-
-  useEffect(() => {
-    const hits = evaluateReminders(leads);
+    const hits = evaluateReminders(activeLeads);
     hits.forEach((hit) => {
-      const lead = leads.find((l) => l.id === hit.leadId);
+      const lead = activeLeads.find((l) => l.id === hit.leadId);
       if (!lead) return;
       addTask({
         title: `Recordatorio: mover ${lead.firstName}`,
@@ -255,10 +253,10 @@ export default function AgentLeads() {
       });
       track('reminder.fired', { properties: { leadId: lead.id, ruleId: hit.ruleId } });
     });
-  }, [leads]);
+  }, [activeLeads]);
 
   useEffect(() => {
-    const stale = leads.filter(
+    const stale = activeLeads.filter(
       (lead) =>
         lead.stage === 'new' &&
         differenceInHours(new Date(), lead.createdAt) >= 2
@@ -291,7 +289,7 @@ export default function AgentLeads() {
         localStorage.setItem('agenthub_sla_notified', '1');
       }
     }
-  }, [leads]);
+  }, [activeLeads]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -309,7 +307,7 @@ export default function AgentLeads() {
 
   const filteredLeads = useMemo(() => {
     const text = searchQuery.toLowerCase();
-    return leads
+    return activeLeads
       .filter((lead) =>
         [lead.firstName, lead.lastName, lead.email, lead.phone]
           .filter(Boolean)
@@ -318,7 +316,7 @@ export default function AgentLeads() {
       .filter((lead) => stageFilter === 'all' || stageFilter.includes(lead.stage))
       .filter((lead) => !onlyNew || differenceInHours(new Date(), lead.createdAt) <= 48 || lead.stage === 'new')
       .filter((lead) => !onlyUnread || unreadLeadIds.has(lead.id));
-  }, [leads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds]);
+  }, [activeLeads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds]);
 
   const leadsByStage = useMemo(() => {
     return pipelineStages.reduce((acc, stage) => {
@@ -327,7 +325,7 @@ export default function AgentLeads() {
     }, {} as Partial<Record<LeadStage, Lead[]>>);
   }, [filteredLeads]);
 
-  const activeLead = activeId ? leads.find((l) => l.id === activeId) : null;
+  const activeLead = activeId ? activeLeads.find((l) => l.id === activeId) : null;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -350,14 +348,13 @@ export default function AgentLeads() {
 
     if (!targetStage) return;
 
-    const lead = leads.find(l => l.id === activeLeadId);
+    const lead = activeLeads.find(l => l.id === activeLeadId);
     if (!lead || lead.stage === targetStage) return;
 
     const previousStage = lead.stage;
     
     // TODO: replace with API call
-    setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: targetStage! } : l));
-
+    const prev = updateLeadStage(activeLeadId, targetStage);
     const stageLabel = stageConfig[targetStage].label;
     toast({
       title: `Lead movido a ${stageLabel}`,
@@ -366,7 +363,7 @@ export default function AgentLeads() {
       action: (
         <ToastAction altText="Deshacer" onClick={() => {
           // TODO: replace with API call
-          setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: previousStage } : l));
+          if (prev) updateLeadStage(activeLeadId, previousStage);
         }}>
           Deshacer
         </ToastAction>
@@ -389,21 +386,14 @@ export default function AgentLeads() {
     const random = Math.floor(Math.random() * 900) + 100;
     const { agentId, ruleId } = matchAgentWithAudit({ zone: 'Polanco', price: 5000000, type: 'buyer', reason: 'assignment' });
     const assignedTo = agentId || 'agent-1';
-    const newLead: Lead = {
-      id: `lead-${Date.now()}`,
-      agentId: assignedTo,
+    const newLead = addLead({
       firstName: `Lead ${random}`,
       lastName: 'Demo',
-      stage: 'new',
+      assignedTo,
       interestedIn: 'buy',
       source: 'marketplace',
       temperature: 'warm',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      conversationId: `conv-${Date.now()}`,
-    };
-    // TODO: replace with API call
-    setLeads(prev => [newLead, ...prev]);
+    });
 
     toast({
       title: 'Lead creado',
@@ -606,6 +596,42 @@ export default function AgentLeads() {
                     No hay leads con estos filtros
                   </div>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {spamLeads.length > 0 && (
+        <motion.div variants={staggerItem}>
+          <Card className="border-destructive/30">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold flex items-center gap-2 text-destructive">
+                    Leads marcados como spam
+                  </p>
+                  <p className="text-xs text-muted-foreground">Se excluyen del pipeline y ruteo.</p>
+                </div>
+                <Badge variant="outline">{spamLeads.length}</Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {spamLeads.map((lead) => (
+                  <div key={lead.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-muted/40">
+                    <span className="text-sm font-medium">{lead.firstName} {lead.lastName}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        restoreLead(lead.id);
+                        addAuditEvent({ action: 'lead.spam_restored', payload: { leadId: lead.id } });
+                        track('lead.spam_restored', { properties: { leadId: lead.id } });
+                      }}
+                    >
+                      Restaurar
+                    </Button>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

@@ -33,6 +33,15 @@ This document lists canonical analytics events used across the platform. It refl
 - `profile.complete_step` — User completed an onboarding/profile step (properties: { step })
 - `cx.feedback_added` — CX feedback added (properties: { subject, rating })
 - `appointment.no_show` — Appointment marked no-show (properties: { appointmentId })
+- `contact.list_view` — Contact list viewed
+- `contact.view` — Contact detail viewed (properties: { contactId })
+- `contact.created` — Contact created (properties: { contactId })
+- `contact.merge_success` — Contact merge executed (properties: { contactId, mergedIds })
+- `contact.lead_created_from_contact` — Lead created from contact (properties: { contactId, leadId })
+- `notifications.prefs_saved` — Notification preferences saved
+- `notifications.silenced` — Notifications silenced by quiet hours
+- `lead.spam_marked` — Lead marked as spam (properties: { leadId })
+- `lead.spam_restored` — Lead restored from spam (properties: { leadId })
 
 
 ## Mapping: legacy -> canonical

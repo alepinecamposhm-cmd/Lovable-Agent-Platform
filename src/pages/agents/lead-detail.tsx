@@ -53,10 +53,11 @@ import { cn } from '@/lib/utils';
 import type { Lead, LeadActivity, LeadStage } from '@/types/agents';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useLeadStore, updateLeadNotes, updateLeadStage, updateLeadTags } from '@/lib/agents/leads/store';
+import { useLeadStore, updateLeadNotes, updateLeadStage, updateLeadTags, markLeadSpam, restoreLead } from '@/lib/agents/leads/store';
 import { add as addNotification } from '@/lib/agents/notifications/store';
 import { addTask, completeTask, undoCompleteTask, useTaskStore } from '@/lib/agents/tasks/store';
 import { listIntegrations } from '@/lib/agents/integrations/store';
+import { addAuditEvent } from '@/lib/audit/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string }> = {
   new: { label: 'New', color: 'bg-blue-500' },
@@ -276,6 +277,35 @@ export default function AgentLeadDetail() {
             <Briefcase className="h-4 w-4" />
             Iniciar en Dotloop
           </Button>
+          {lead.isSpam ? (
+            <Button
+              variant="secondary"
+              className="gap-2"
+              onClick={() => {
+                restoreLead(lead.id);
+                addAuditEvent({ action: 'lead.spam_restored', payload: { leadId: lead.id } });
+                track('lead.spam_restored', { properties: { leadId: lead.id } });
+                toast({ title: 'Lead restaurado', description: 'Se quitó la marca de spam.' });
+              }}
+            >
+              Quitar spam
+            </Button>
+          ) : (
+            <Button
+              variant="destructive"
+              className="gap-2"
+              onClick={() => {
+                const ok = window.confirm('¿Marcar este lead como spam y ocultarlo del pipeline?');
+                if (!ok) return;
+                markLeadSpam(lead.id, 'manual_mark');
+                addAuditEvent({ action: 'lead.spam_marked', payload: { leadId: lead.id } });
+                track('lead.spam_marked', { properties: { leadId: lead.id } });
+                toast({ title: 'Lead marcado como spam', description: 'Se ocultará del pipeline.' });
+              }}
+            >
+              Marcar spam
+            </Button>
+          )}
           <Select value={stage} onValueChange={(v) => handleStageChange(v as LeadStage)}>
             <SelectTrigger className="w-44">
               <SelectValue placeholder="Mover etapa" />
@@ -290,6 +320,17 @@ export default function AgentLeadDetail() {
           </Select>
         </motion.div>
       </div>
+
+      {lead.isSpam && (
+        <motion.div variants={staggerItem}>
+          <Card className="border-destructive/40 bg-destructive/5">
+            <CardContent className="py-3 text-sm text-destructive flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              Este lead está marcado como spam. No aparecerá en el pipeline hasta que lo restaures.
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Top summary */}
       <motion.div variants={staggerItem} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

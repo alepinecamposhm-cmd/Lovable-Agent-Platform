@@ -506,6 +506,9 @@ export default function AgentListingDetail() {
               <Button variant="outline" className="w-full" onClick={() => handleBoost('7d')}>
                 Boost 7 días (50 créditos)
               </Button>
+              <Button variant="outline" className="w-full" onClick={handleShowingTime}>
+                Programar con ShowingTime
+              </Button>
               <Button variant="ghost" className="w-full" asChild>
                 <Link to="/agents/credits" className="gap-2">
                   <ShieldHalf className="h-4 w-4" />

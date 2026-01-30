@@ -150,6 +150,41 @@ export const mockLeads: Lead[] = [
   },
 ];
 
+export const mockContacts = [
+  {
+    id: 'contact-1',
+    firstName: 'María',
+    lastName: 'García',
+    emails: ['maria.garcia@email.com'],
+    phones: ['+52 55 9876 5432'],
+    notes: 'Lead caliente, agenda visita semanal',
+  },
+  {
+    id: 'contact-2',
+    firstName: 'Roberto',
+    lastName: 'Hernández',
+    emails: ['roberto.h@email.com'],
+    phones: ['+52 55 5555 1234'],
+    notes: 'Prefiere contacto por email',
+  },
+  {
+    id: 'contact-3',
+    firstName: 'Laura',
+    lastName: 'Martínez',
+    emails: ['laura.m@email.com'],
+    phones: ['+52 55 4444 3333'],
+    notes: 'Interesada en condo 2 recámaras',
+  },
+  {
+    id: 'contact-4',
+    firstName: 'Ana',
+    lastName: 'López',
+    emails: ['ana.lopez@email.com'],
+    phones: ['+52 55 3333 2222'],
+    notes: 'Rent search, flexible fechas',
+  },
+];
+
 export const mockConversations: Conversation[] = [
   {
     id: 'conv-1',

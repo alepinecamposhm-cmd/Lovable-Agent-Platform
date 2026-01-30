@@ -6,13 +6,16 @@ export interface RoutingRule {
   zone: string;
   minPrice?: number;
   maxPrice?: number;
+  type?: 'buyer' | 'seller' | 'rent';
   assignToAgentId: string;
+  assignToAgentIds?: string[];
 }
 
 export interface RoutingAudit {
   id: string;
   zone?: string;
   price?: number;
+  type?: 'buyer' | 'seller' | 'rent';
   matchedAgentId: string;
   ruleId?: string;
   reason: 'assignment' | 'simulation';
@@ -23,6 +26,7 @@ const STORAGE_KEY = 'agenthub_routing_rules';
 const PAUSED_KEY = 'agenthub_paused_agents';
 const AUDIT_KEY = 'agenthub_routing_audit';
 const listeners = new Set<() => void>();
+const roundRobinPointers: Record<string, number> = {};
 
 function load(): RoutingRule[] {
   if (typeof window === 'undefined') return [];
@@ -58,7 +62,7 @@ function saveAudit(data: RoutingAudit[]) {
 
 let rules = load();
 let audit = loadAudit();
-let snapshot: { rules: RoutingRule[]; paused: Set<string> } | null = null;
+let snapshot: { rules: RoutingRule[]; paused: Set<string>; audit: RoutingAudit[] } | null = null;
 
 function emit() {
   snapshot = null;
@@ -105,26 +109,43 @@ export function togglePauseAgent(agentId: string, paused: boolean) {
   emit();
 }
 
-export function matchAgent({ zone, price }: { zone?: string; price?: number }) {
+function pickAssignee(rule: RoutingRule, paused: Set<string>) {
+  const pool = rule.assignToAgentIds && rule.assignToAgentIds.length > 0
+    ? rule.assignToAgentIds
+    : [rule.assignToAgentId];
+  const available = pool.filter((id) => !paused.has(id));
+  if (available.length === 0) return undefined;
+  const pointer = roundRobinPointers[rule.id] ?? -1;
+  const next = (pointer + 1) % available.length;
+  roundRobinPointers[rule.id] = next;
+  return available[next];
+}
+
+export function matchAgent({ zone, price, type }: { zone?: string; price?: number; type?: RoutingRule['type'] }) {
   const paused = getPausedAgents();
   const found = rules.find((r) => {
     if (zone && r.zone && r.zone.toLowerCase() !== zone.toLowerCase()) return false;
+    if (type && r.type && r.type !== type) return false;
     if (typeof price === 'number') {
       if (r.minPrice && price < r.minPrice) return false;
       if (r.maxPrice && price > r.maxPrice) return false;
     }
     return true;
   });
-  if (found && !paused.has(found.assignToAgentId)) return found.assignToAgentId;
+  if (found) {
+    const assignee = pickAssignee(found, paused);
+    if (assignee) return assignee;
+  }
   const fallback = mockTeamAgents.find((a) => !paused.has(a.id))?.id;
   return fallback || 'agent-1';
 }
 
-export function matchAgentWithAudit(params: { zone?: string; price?: number; reason?: 'assignment' | 'simulation' }) {
-  const { zone, price, reason = 'assignment' } = params;
-  const agentId = matchAgent({ zone, price });
+export function matchAgentWithAudit(params: { zone?: string; price?: number; type?: RoutingRule['type']; reason?: 'assignment' | 'simulation' }) {
+  const { zone, price, type, reason = 'assignment' } = params;
+  const agentId = matchAgent({ zone, price, type });
   const rule = rules.find((r) => {
     if (zone && r.zone && r.zone.toLowerCase() !== zone.toLowerCase()) return false;
+    if (type && r.type && r.type !== type) return false;
     if (typeof price === 'number') {
       if (r.minPrice && price < r.minPrice) return false;
       if (r.maxPrice && price > r.maxPrice) return false;
@@ -135,6 +156,7 @@ export function matchAgentWithAudit(params: { zone?: string; price?: number; rea
     id: `ra-${globalThis.crypto?.randomUUID?.() || Date.now()}`,
     zone,
     price,
+    type,
     matchedAgentId: agentId,
     ruleId: rule?.id,
     reason,
@@ -142,6 +164,7 @@ export function matchAgentWithAudit(params: { zone?: string; price?: number; rea
   };
   audit = [entry, ...audit].slice(0, 200);
   saveAudit(audit);
+  emit();
   return { agentId, ruleId: rule?.id };
 }
 
@@ -150,7 +173,7 @@ export function listRoutingAudit(): RoutingAudit[] {
 }
 
 function getSnapshot() {
-  if (!snapshot) snapshot = { rules: listRules(), paused: getPausedAgents() };
+  if (!snapshot) snapshot = { rules: listRules(), paused: getPausedAgents(), audit: listRoutingAudit() };
   return snapshot;
 }
 

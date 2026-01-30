@@ -32,6 +32,7 @@ import AgentIntegrations from "./pages/agents/integrations";
 import AgentNotificationSettings from "./pages/agents/settings/notifications";
 import AgentOpenHouseVisitors from "./pages/agents/open-house/visitors";
 import AgentAudit from "./pages/agents/audit";
+import AgentRouting from "./pages/agents/routing";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +61,7 @@ const App = () => (
             <Route path="profile/:agentId" element={<AgentProfilePage />} />
             <Route path="credits" element={<AgentCredits />} />
             <Route path="team" element={<AgentTeam />} />
+            <Route path="routing" element={<AgentRouting />} />
             <Route path="reports" element={<AgentReports />} />
             <Route path="reports/experience" element={<AgentExperienceReport />} />
             <Route path="reports/roi" element={<AgentRoiReport />} />

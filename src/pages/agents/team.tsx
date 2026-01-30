@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
-import { useRoutingStore, addRule, deleteRule, togglePauseAgent, getPausedAgents } from '@/lib/agents/routing/store';
+import { useRoutingStore, addRule, deleteRule, togglePauseAgent } from '@/lib/agents/routing/store';
 import { useReminderStore, addReminderRule, deleteReminderRule, toggleReminderRule } from '@/lib/agents/reminders/store';
 import type { LeadStage } from '@/types/agents';
 
@@ -34,8 +34,9 @@ const invites = [
 
 export default function AgentTeam() {
   const [inviteEmail, setInviteEmail] = useState('');
-  const routingRules = useRoutingStore();
-  const pausedAgents = getPausedAgents();
+  const routingStore = useRoutingStore();
+  const routingRules = routingStore.rules;
+  const pausedAgents = routingStore.paused;
   const [newZone, setNewZone] = useState('');
   const [newAssignee, setNewAssignee] = useState(teamMembers[0].id);
   const reminders = useReminderStore();

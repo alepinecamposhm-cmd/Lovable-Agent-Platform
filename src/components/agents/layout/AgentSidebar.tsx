@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Home,
   AlarmClock,
+  Route,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -46,6 +47,7 @@ const mainNavItems = [
 const secondaryNavItems = [
   { title: 'Créditos', url: '/agents/credits', icon: CreditCard },
   { title: 'Equipo', url: '/agents/team', icon: UsersRound },
+  { title: 'Ruteo', url: '/agents/routing', icon: Route },
   { title: 'Reportes', url: '/agents/reports', icon: BarChart3 },
   { title: 'Mapa (Plan)', url: '/agents/roadmap', icon: Map },
   { title: 'Notificaciones', url: '/agents/notifications', icon: Bell },

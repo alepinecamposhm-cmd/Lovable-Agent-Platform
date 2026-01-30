@@ -47,7 +47,7 @@ import { add as addNotification, useNotificationStore } from '@/lib/agents/notif
 import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { track } from '@/lib/analytics';
-import { matchAgent } from '@/lib/agents/routing/store';
+import { matchAgentWithAudit } from '@/lib/agents/routing/store';
 import { mockTeamAgents } from '@/lib/agents/fixtures';
 import { addTask } from '@/lib/agents/tasks/store';
 import { evaluateReminders } from '@/lib/agents/reminders/store';
@@ -387,7 +387,8 @@ export default function AgentLeads() {
 
   const handleAddLead = () => {
     const random = Math.floor(Math.random() * 900) + 100;
-    const assignedTo = matchAgent({ zone: 'Polanco', price: 5000000 }) || 'agent-1';
+    const { agentId, ruleId } = matchAgentWithAudit({ zone: 'Polanco', price: 5000000, type: 'buyer', reason: 'assignment' });
+    const assignedTo = agentId || 'agent-1';
     const newLead: Lead = {
       id: `lead-${Date.now()}`,
       agentId: assignedTo,
@@ -408,6 +409,7 @@ export default function AgentLeads() {
       title: 'Lead creado',
       description: `${newLead.firstName} asignado a ${mockTeamAgents.find(a => a.id === assignedTo)?.firstName || 'agente'}.`,
     });
+    track('lead.created', { properties: { leadId: newLead.id, ruleId } });
     addNotification({
       type: 'lead',
       title: 'Nuevo lead asignado',

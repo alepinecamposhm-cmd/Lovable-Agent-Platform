@@ -13,7 +13,7 @@ import { addLead } from '@/lib/agents/leads/store';
 import { track } from '@/lib/analytics';
 import { addAuditEvent } from '@/lib/audit/store';
 import { toast } from '@/components/ui/use-toast';
-import { ArrowLeft, Link2, ShieldAlert, UserPlus2 } from 'lucide-react';
+import { ArrowLeft, Link2, ShieldAlert, UserPlus2, GitMerge } from 'lucide-react';
 
 export default function AgentContactDetail() {
   const params = useParams();
@@ -115,6 +115,9 @@ export default function AgentContactDetail() {
               <UserPlus2 className="h-4 w-4" /> Crear lead
             </Button>
           )}
+          <Button variant="outline" className="gap-2" onClick={() => navigate(`/agents/contacts/${contact.id}/merge`)}>
+            <GitMerge className="h-4 w-4" /> Merge duplicados
+          </Button>
           <Button variant="outline" onClick={() => navigate('/agents/contacts')}>Volver</Button>
         </div>
       </motion.div>

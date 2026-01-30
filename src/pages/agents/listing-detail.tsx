@@ -34,6 +34,7 @@ import { listIntegrations } from '@/lib/agents/integrations/store';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
+import { track } from '@/lib/analytics';
 
 const statusConfig: Record<ListingStatus, { label: string; color: string; pill: string }> = {
   draft: { label: 'Borrador', color: 'text-muted-foreground', pill: 'bg-muted text-muted-foreground' },
@@ -68,6 +69,10 @@ export default function AgentListingDetail() {
   });
   const [openHouseTime, setOpenHouseTime] = useState('12:00');
   const [scheduling, setScheduling] = useState(false);
+
+  useEffect(() => {
+    track('navigation.page_view', { properties: { path: '/agents/listings/:listingId', listingId: params.listingId } });
+  }, [params.listingId]);
 
   if (!listing) {
     return (
@@ -115,6 +120,12 @@ export default function AgentListingDetail() {
       title: 'Estado actualizado',
       description: `Listing marcado como ${statusConfig[newStatus].label}.`,
     });
+  };
+
+  const handleOpenHouseVisitors = () => {
+    toast({ title: 'Visitantes', description: 'Abriendo visitantes de open house (mock).' });
+    track('navigation.cta_click', { properties: { cta: 'open_house_visitors', listingId: listing.id } });
+    navigate('/agents/open-house/visitors');
   };
 
   const VerificationIcon = verificationConfig[verification].icon;
@@ -256,6 +267,10 @@ export default function AgentListingDetail() {
           <Button size="sm" className="gap-2" onClick={() => handleBoost('24h')}>
             <Zap className="h-4 w-4" />
             Boost 24h
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleOpenHouseVisitors}>
+            <Eye className="h-4 w-4" />
+            Visitantes Open House
           </Button>
         </motion.div>
       </div>

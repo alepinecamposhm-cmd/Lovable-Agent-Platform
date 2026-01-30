@@ -81,6 +81,7 @@ export interface Lead {
   budgetMax?: number;
   preferredZones?: string[];
   notes?: string;
+  tags?: string[];
   lastContactedAt?: Date;
   lastActivityAt?: Date;
   nextFollowUpAt?: Date;
@@ -93,13 +94,10 @@ export interface Lead {
 export type LeadStage = 
   | 'new'
   | 'contacted'
-  | 'engaged'
   | 'appointment_set'
-  | 'met'
-  | 'negotiating'
-  | 'closed_won'
-  | 'closed_lost'
-  | 'archived';
+  | 'toured'
+  | 'closed'
+  | 'closed_lost';
 
 export type LeadSource = 
   | 'marketplace'
@@ -350,10 +348,14 @@ export interface Task {
   title: string;
   description?: string;
   dueAt?: Date;
+  snoozedUntil?: Date;
   priority: 'low' | 'medium' | 'high';
   status: 'pending' | 'completed' | 'cancelled';
   completedAt?: Date;
   createdAt: Date;
+  tags?: string[];
+  origin?: 'manual' | 'auto';
+  originKey?: string;
 }
 
 // ============ METRICS ============

@@ -75,6 +75,7 @@ export default function AgentNotifications() {
               variant={typeFilter === 'all' ? 'default' : 'outline'}
               className="cursor-pointer"
               onClick={() => setTypeFilter('all')}
+              aria-label="Filtrar todos los tipos"
             >
               Todos
             </Badge>
@@ -84,6 +85,7 @@ export default function AgentNotifications() {
                 variant={typeFilter === key ? 'default' : 'outline'}
                 className="cursor-pointer"
                 onClick={() => setTypeFilter(key as NotificationType)}
+                aria-label={`Filtrar ${label}`}
               >
                 {label}
               </Badge>
@@ -93,6 +95,7 @@ export default function AgentNotifications() {
               variant={statusFilter === 'all' ? 'default' : 'outline'}
               className="cursor-pointer"
               onClick={() => setStatusFilter('all')}
+              aria-label="Mostrar todas"
             >
               Todos
             </Badge>
@@ -100,6 +103,7 @@ export default function AgentNotifications() {
               variant={statusFilter === 'unread' ? 'default' : 'outline'}
               className="cursor-pointer"
               onClick={() => setStatusFilter('unread')}
+              aria-label="Solo sin leer"
             >
               Sin leer
             </Badge>
@@ -107,12 +111,13 @@ export default function AgentNotifications() {
               variant={statusFilter === 'read' ? 'default' : 'outline'}
               className="cursor-pointer"
               onClick={() => setStatusFilter('read')}
+              aria-label="Solo leídas"
             >
               Leídas
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="divide-y">
+        <CardContent className="divide-y max-h-[70vh] overflow-y-auto" role="list" aria-label="Lista de notificaciones">
           {feed.length === 0 && (
             <div className="py-10 flex flex-col items-center gap-2 text-muted-foreground">
               <Inbox className="h-8 w-8" />
@@ -128,6 +133,9 @@ export default function AgentNotifications() {
                 n.status === 'unread' && 'bg-primary/5 rounded-lg px-3 -mx-3'
               )}
               onClick={() => markRead(n.id)}
+              tabIndex={0}
+              role="listitem"
+              aria-label={`${n.title} - ${formatDistanceToNow(n.createdAt, { addSuffix: true, locale: es })}`}
             >
               <Badge variant="secondary" className="mt-1 capitalize">
                 {typeLabels[n.type] || n.type}

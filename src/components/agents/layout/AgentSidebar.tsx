@@ -14,6 +14,7 @@ import {
   Settings,
   ChevronLeft,
   Home,
+  AlarmClock,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -32,6 +33,7 @@ import {
 import { cn } from '@/lib/utils';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useTaskStore } from '@/lib/agents/tasks/store';
 
 const mainNavItems = [
   { title: 'Dashboard', url: '/agents/overview', icon: LayoutDashboard },
@@ -47,6 +49,7 @@ const secondaryNavItems = [
   { title: 'Reportes', url: '/agents/reports', icon: BarChart3 },
   { title: 'Mapa (Plan)', url: '/agents/roadmap', icon: Map },
   { title: 'Notificaciones', url: '/agents/notifications', icon: Bell },
+  { title: 'Tareas', url: '/agents/tasks', icon: AlarmClock, badgeKey: 'tasks' },
 ];
 
 const settingsItem = { title: 'Configuración', url: '/agents/settings', icon: Settings };
@@ -55,6 +58,7 @@ export function AgentSidebar() {
   const location = useLocation();
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
+  const { pending: pendingTasks } = useTaskStore();
 
   const isActive = (url: string) => location.pathname.startsWith(url);
 
@@ -157,6 +161,20 @@ export function AgentSidebar() {
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
                       {!isCollapsed && <span>{item.title}</span>}
+                      {item.badgeKey === 'tasks' && pendingTasks > 0 && !isCollapsed && (
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-sidebar-primary text-[10px] font-medium text-sidebar-primary-foreground"
+                        >
+                          {pendingTasks}
+                        </motion.span>
+                      )}
+                      {item.badgeKey === 'tasks' && pendingTasks > 0 && isCollapsed && (
+                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-sidebar-primary text-[9px] font-medium text-sidebar-primary-foreground">
+                          {pendingTasks}
+                        </span>
+                      )}
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

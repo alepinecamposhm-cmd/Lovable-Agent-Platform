@@ -1,2189 +1,1133 @@
-# Plataforma de Agentes - Especificación Completa
-## Feature-Page-DashboardAgents-28-01-2026
+# AGENT-PLATFORM-SPEC.md
+# Portal de Agentes Inmobiliarios (Agent Oasis) — Especificación Canónica
+
+Versión: 1.0  
+Estado: Borrador canónico (Source of Truth)  
+Última actualización: 2026-01-29  
+Owner: Producto + Frontend (por definir nombres)  
+
+Este documento define, con nivel de detalle accionable, el alcance, UX/UI, reglas, modelos de datos, analítica, seguridad y criterios de implementación del Portal de Agentes Inmobiliarios. Debe ser la referencia única para abrir issues, planificar sprints y revisar PRs.
 
 ---
 
-# 1. EXECUTIVE SUMMARY
+## Tabla de contenidos
 
-## Visión
-Construir una plataforma CRM inmobiliaria que iguale Zillow Premier Agent en funcionalidad core pero lo **supere en experiencia interactiva**: micro-interacciones que guían, confirman y generan hábito de retorno sin recurrir a dark patterns.
-
-## MVP: Qué construir primero (6-8 semanas)
-
-| Prioridad | Módulo | Desbloquea |
-|-----------|--------|------------|
-| P0 | **Inbox Unificado + Pipeline Leads** | Gestión centralizada de comunicación y estados. Sin esto no hay CRM |
-| P0 | **Chat básico** | Conversación bidireccional con plantillas y adjuntos |
-| P0 | **Calendario de visitas** | Scheduling de citas, confirmaciones, recordatorios |
-| P1 | **Listings con actividad** | Gestión de propiedades + feed de actividad (views/saves/messages) |
-| P1 | **Créditos/Billing UI** | Saldo, ledger, reglas de consumo (sin backend vendor) |
-| P2 | **Team básico** | Roles, invitaciones, routing simple |
-| P2 | **Reporting mínimo** | Métricas de respuesta, conversiones, desempeño |
-
-## ROI por release
-
-- **MVP (P0)**: Agentes pueden operar día a día. Retención base establecida.
-- **V1 (P0+P1)**: Monetización habilitada. Listings como "gancho" de retorno.
-- **V2 (P0+P1+P2)**: Equipos e inmobiliarias. Escalabilidad comercial.
-
-## Diferenciadores vs Zillow
-
-| Zillow | Nosotros |
-|--------|----------|
-| UI funcional pero estática | **UI viva**: optimistic updates, micro-feedback, progress loops |
-| Notificaciones push agresivas | **Respeto al usuario**: quiet hours, digest configurable, controles claros |
-| CRM genérico | **Habit loops explícitos**: sensación de progreso, next best action, micro-rewards |
-| Mobile-first (app nativa) | **Web-first responsive** con experiencia comparable |
+0. [Evidencia interna del repositorio (escaneo)](#0-evidencia-interna-del-repositorio-escaneo)  
+1. [Resumen ejecutivo](#1-resumen-ejecutivo)  
+2. [Objetivos y KPIs](#2-objetivos-y-kpis)  
+3. [Alcance: MVP / V1 / No-alcance](#3-alcance-mvp--v1--no-alcance)  
+4. [Principios de producto y UX](#4-principios-de-producto-y-ux)  
+5. [Personas y Jobs-to-be-done](#5-personas-y-jobs-to-be-done)  
+6. [Roles y permisos (RBAC)](#6-roles-y-permisos-rbac)  
+7. [Arquitectura funcional (mapa de módulos)](#7-arquitectura-funcional-mapa-de-módulos)  
+8. [Módulo: Leads Inbox](#8-módulo-leads-inbox)  
+9. [Módulo: CRM / Pipeline](#9-módulo-crm--pipeline)  
+10. [Módulo: Contactos (unificación + dedupe)](#10-módulo-contactos-unificación--dedupe)  
+11. [Módulo: Actividades + Timeline + Tasks](#11-módulo-actividades--timeline--tasks)  
+12. [Módulo: Propiedades / Matching](#12-módulo-propiedades--matching)  
+13. [Sistema de Créditos](#13-sistema-de-créditos)  
+14. [Flujos E2E críticos](#14-flujos-e2e-críticos)  
+15. [UI/UX: Information Architecture + Navegación](#15-uiux-information-architecture--navegación)  
+16. [Diseño de componentes (Design System operacional)](#16-diseño-de-componentes-design-system-operacional)  
+17. [Microinteracciones (mínimo 30)](#17-microinteracciones-mínimo-30)  
+18. [Estados del sistema (globales)](#18-estados-del-sistema-globales)  
+19. [Datos y entidades (modelo conceptual)](#19-datos-y-entidades-modelo-conceptual)  
+20. [Integraciones (presentes/futuras) + estrategia](#20-integraciones-presentesfuturas--estrategia)  
+21. [Analítica y observabilidad](#21-analítica-y-observabilidad)  
+22. [Seguridad, privacidad y auditoría](#22-seguridad-privacidad-y-auditoría)  
+23. [Performance y escalabilidad](#23-performance-y-escalabilidad)  
+24. [Riesgos y mitigaciones](#24-riesgos-y-mitigaciones)  
+25. [Supuestos y decisiones pendientes (TODO priorizado)](#25-supuestos-y-decisiones-pendientes-todo-priorizado)  
+26. [Glosario + Convenciones terminológicas](#26-glosario--convenciones-terminológicas)  
 
 ---
 
-# 2. FEATURE MAP
+## 0. Evidencia interna del repositorio (escaneo)
 
-| Módulo | Feature | Prioridad | Trigger Retorno | Valor | Complejidad | Dependencias | Motion Notes | Métrica |
-|--------|---------|-----------|-----------------|-------|-------------|--------------|--------------|---------|
-| **Inbox** | Lista unificada de conversaciones | MVP | ✅ Mensaje nuevo | Alto | Media | - | Skeleton → fade-in, badge pulse | Tiempo respuesta |
-| Inbox | Filtros por estado/tipo/fecha | MVP | ❌ | Medio | Baja | Inbox base | Tab slide | Filter usage |
-| Inbox | Búsqueda de conversaciones | V1 | ❌ | Medio | Media | Inbox base | Input focus glow | Search CTR |
-| Inbox | Templates de respuesta rápida | MVP | ❌ | Alto | Baja | Chat | Insert animation | Template usage |
-| **Leads** | Pipeline kanban/lista | MVP | ✅ Stage change | Alto | Alta | - | Drag ghost, drop confetti sutil | Stage velocity |
-| Leads | Filtros multi-criterio | MVP | ❌ | Medio | Media | Pipeline | Pill animate-in | Filter sessions |
-| Leads | Detalle de lead con timeline | MVP | ✅ Nueva actividad | Alto | Media | Pipeline | Panel slide-in | Engagement depth |
-| Leads | Lead scoring visible | V1 | ✅ Score change | Alto | Media | Pipeline | Number morph | Score accuracy |
-| Leads | Tareas/reminders por lead | MVP | ✅ Tarea vence | Alto | Media | Pipeline | Checkbox spring | Task completion |
-| **Chat** | Conversación bidireccional | MVP | ✅ Mensaje nuevo | Alto | Alta | - | Message slide-up, typing dots | Messages/day |
-| Chat | Adjuntos (imágenes, docs) | MVP | ❌ | Medio | Media | Chat base | Upload progress ring | Attachment rate |
-| Chat | Indicadores envío/entrega/lectura | V1 | ❌ | Medio | Media | Chat base | Check marks animate | Read rate |
-| Chat | Notas internas | MVP | ❌ | Alto | Baja | Chat base | Sticky note appear | Notes/lead |
-| Chat | Historial completo | MVP | ❌ | Alto | Baja | Chat base | Virtualized scroll | History depth |
-| **Calendar** | Vista semana/mes | MVP | ✅ Cita confirmada | Alto | Alta | - | Day cell highlight | Appointments/week |
-| Calendar | Crear/editar cita | MVP | ❌ | Alto | Media | Calendar base | Modal scale-in | Create success |
-| Calendar | Confirmar/reprogramar/cancelar | MVP | ✅ Status change | Alto | Media | Calendar base | Status badge morph | Confirmation rate |
-| Calendar | Recordatorios configurables | MVP | ✅ Reminder | Medio | Baja | Calendar base | Bell shake | Reminder CTR |
-| Calendar | Slots de disponibilidad | V1 | ❌ | Medio | Media | Calendar base | Slot highlight | Utilization |
-| **Listings** | Grid/lista de propiedades | MVP | ✅ Activity spike | Alto | Media | - | Card hover lift | Listings/agent |
-| Listings | Estados (draft/active/paused/sold) | MVP | ✅ Status change | Alto | Baja | Listings base | Status pill morph | Status velocity |
-| Listings | Feed de actividad (views/saves) | MVP | ✅ Nueva actividad | Alto | Media | Listings base | Activity item fade-in | Engagement/listing |
-| Listings | Editor de listing | V1 | ❌ | Alto | Alta | Listings base | Section expand | Edit completion |
-| Listings | Request verificación | MVP | ✅ Verified! | Medio | Baja | Listings base | Badge animate | Verification rate |
-| Listings | Media gallery manager | V1 | ❌ | Medio | Alta | Editor | Drag reorder, upload % | Media/listing |
-| **Credits** | Saldo + historial | MVP | ✅ Low balance | Alto | Media | - | Number count-up | Balance checks/day |
-| Credits | Reglas de consumo | MVP | ❌ | Medio | Media | Saldo | Toggle slide | Rules configured |
-| Credits | Recarga (UI) | V1 | ❌ | Alto | Media | Saldo | Success confetti | Recharge events |
-| Credits | Facturas | V2 | ❌ | Bajo | Baja | Recarga | List fade-in | Downloads |
-| **Team** | Lista de miembros | MVP | ❌ | Medio | Baja | - | Avatar stack | Team size |
-| Team | Roles básicos | MVP | ❌ | Medio | Media | Members | Permission toggle | Role changes |
-| Team | Invitaciones | MVP | ✅ Invite accepted | Medio | Media | Members | Invite pulse | Invite rate |
-| Team | Routing rules | V1 | ❌ | Alto | Alta | Members | Rule card animate | Routing efficiency |
-| Team | Pausar/reactivar agente | V1 | ❌ | Medio | Baja | Members | Status morph | Pause events |
-| **Reports** | Dashboard overview | MVP | ✅ Metric improved | Alto | Media | All data | Chart animate | Dashboard visits |
-| Reports | Response time metrics | MVP | ❌ | Alto | Baja | Inbox | Gauge animate | Avg response time |
-| Reports | Conversion funnels | V1 | ❌ | Alto | Media | Leads | Funnel animate | Conversion rate |
-| Reports | Desempeño por zona | V1 | ❌ | Medio | Media | Listings | Map heat animate | Zone performance |
-| Reports | Export (CSV) | V2 | ❌ | Bajo | Baja | Reports | Download button | Exports |
-| **Settings** | Perfil del agente | MVP | ❌ | Alto | Baja | - | Save indicator | Profile completion |
-| Settings | Zonas de operación | MVP | ❌ | Medio | Media | Perfil | Map pin drop | Zones configured |
-| Settings | Notificaciones | MVP | ❌ | Alto | Baja | - | Toggle slide | Notification prefs |
-| Settings | Quiet hours | MVP | ❌ | Medio | Baja | Notificaciones | Time picker | Quiet hours set |
-| Settings | Integraciones (UI only) | V2 | ❌ | Bajo | Baja | - | Card flip | Integrations enabled |
+Este documento NO asume implementación existente del Portal de Agentes. Antes de especificar, se revisó la evidencia disponible en el repo (archivos de referencia y extractos). Hallazgos:
+
+1. Stack frontend: Vite + React + TypeScript + Tailwind CSS + shadcn-ui (configurado con `components.json`).
+2. Routing: React Router. Rutas actuales documentadas: `/`, `/properties`, `/property/:id`, `*` (NotFound).
+3. Alias de imports: `@/* -> src/*` (en `tsconfig*.json` y se menciona en `vite.config.ts`).
+4. Gestión de dependencias: npm es lockfile canónico (existe `package-lock.json` según guía); hay `bun.lockb` pero no es canónico.
+5. Scripts confirmados por guía interna: `npm run dev`, `build`, `build:dev`, `preview`, `lint`. No hay runner de tests configurado.
+6. Vite corre en puerto `8080` (según guía interna).
+7. UI primitives: `src/components/ui/*` (shadcn/Radix). `cn()` (clsx + tailwind-merge) en `src/lib/utils.ts`.
+8. Tokens de tema: CSS variables (HSL) en `src/index.css`, consumidas por Tailwind (`tailwind.config.ts`).
+9. Tailwind extendido con colores semánticos y custom: `onyx`, `graphite`, `porcelain`, `silver`, `champagne`, `emerald`. Animaciones definidas: `fade-in`, `scale-in`, `accordion-*`. Plugin: `tailwindcss-animate`.
+10. Uso de `framer-motion` en componentes existentes (p. ej. páginas/feature de comparador e historial).
+11. Uso de `Victory` para charts (p. ej. secciones de historial de precios).
+12. Uso de `lucide-react` para iconografía.
+13. Datos actuales del marketplace: fuente estática `src/data/properties.ts` (según guía interna).
+14. Modelo de propiedad y eventos de timeline: `src/types/property.ts` + normalización `src/lib/propertyTimeline.ts`.
+15. Proveedores de app: `QueryClientProvider` (TanStack Query) + providers de tooltip/toast (según guía interna).
+16. Integración de desarrollo: `lovable-tagger` en modo dev (según guía interna).
+17. No existe evidencia interna de rutas `/agents` ni de módulos de Portal de Agentes implementados actualmente (por definir/por implementar).
+18. TS strictness: `tsconfig.app.json` con `strict: false`, `strictNullChecks: false` y varias reglas relajadas (impacto en calidad/seguridad de tipos; se aborda en Performance/Seguridad como decisión pendiente).
+
+Implicación: el Portal de Agentes se diseñará como un conjunto nuevo de rutas y módulos dentro de la SPA existente, reutilizando primitives UI, estilos, patrones de routing, motion y data fetching ya presentes.
 
 ---
 
-# 3. BENCHMARK ZILLOW PREMIER AGENT
+## 1. Resumen ejecutivo
 
-## Módulos Confirmados (fuentes públicas, docs, reviews 2024-2025)
+### Problema
+Los agentes pierden leads, responden tarde y no tienen un sistema unificado para:
+- Inbox de mensajes con contexto.
+- Pipeline con etapas y seguimiento.
+- Agenda de citas/visitas.
+- Registro de actividades y tareas.
+- Control de créditos y consumo para monetización (boosts, verificación, etc.).
 
-| Módulo Zillow | Features Confirmadas | Fuente |
-|---------------|---------------------|--------|
-| **Inbox** | Lista de conversaciones, filtros por estado, búsqueda | zillow.com/agents/app-overview |
-| **Contacts/Leads** | Pipeline con estados: New, Attempted Contact, Spoke With, Appointment Set, Met With, Closed Won/Lost | zillow.com/premier-agent/manage-your-real-estate-team-leads |
-| **Lead Insights** | Homes viewed/saved/searched por cliente (opt-in) | zillow.com/premier-agent/crm |
-| **Team Routing** | Routing rules por tipo de lead, zona, round-robin | zillow.com/premier-agent/lead-routing-teams |
-| **Reviews** | Sistema de reviews/ratings de clientes | zillow.com/premieragent/agent-reviews-and-ratings-faq |
-| **Mobile App** | CRM móvil con notificaciones push | zillow.com/premier-agent/app |
-| **Tasks/Reminders** | Sistema de tareas y recordatorios por lead | Inferido de reviews y training materials |
+Esto produce baja conversión, mala experiencia para el usuario final y fricción operacional para equipos.
 
-## Hipótesis (requieren validación)
+### Usuario
+Agentes individuales y agencias/equipos pequeños que operan dentro del marketplace.
 
-| Hipótesis | Evidencia parcial | Cómo validar |
-|-----------|-------------------|--------------|
-| Zillow muestra "time on market" y comparables | Mencionado en reviews, no confirmado en docs | User interviews con agentes Zillow |
-| Auto-responders con IA | Marketing materials sugieren, sin detalles técnicos | Product demo o trial |
-| Calendario integrado con showings | ShowingTime es producto separado de Zillow | Confirmar integración en CRM |
-| Lead scoring algorítmico | Mencionado indirectamente ("quality leads") | Entrevistar agentes |
-| Gamification (badges, rankings) | No encontrado | Probable que NO exista |
-
-## Gaps de Zillow (oportunidades para nosotros)
-
-1. **UI estática**: Sin micro-interacciones visibles, feedback genérico
-2. **Notificaciones agresivas**: Reportes de spam en reviews
-3. **Precio alto**: $300-1000+/mes por zip code
-4. **Lock-in**: Leads solo funcionan en su ecosistema
-5. **Sin transparencia de score**: Agentes no entienden cómo se priorizan
+### Propuesta de valor
+Un portal operativo (no decorativo) que permite:
+- Responder y dar seguimiento en minutos, con SLA visible.
+- Convertir leads en citas y cierres mediante un pipeline claro y tareas accionables.
+- Medir desempeño con métricas útiles y explicables.
+- Monetizar mediante un sistema de créditos transparente y antifraude.
 
 ---
 
-# 4. ARQUITECTURA DE INFORMACIÓN + NAVEGACIÓN
+## 2. Objetivos y KPIs
 
-## Sitemap
+### 2.1 Objetivos de negocio
+1. Aumentar conversión lead → cita y lead → cierre.
+2. Reducir tiempo de respuesta inicial.
+3. Crear base para monetización (créditos) sin degradar confianza.
+4. Habilitar escalamiento a equipos (RBAC + routing) sin reescrituras.
 
-```
-/agents
-├── /overview          → Dashboard principal (KPIs, actividad reciente, next actions)
-├── /leads             → Pipeline + lista de leads
-│   └── /leads/:id     → Detalle de lead (timeline, notas, tareas)
-├── /inbox             → Conversaciones unificadas
-│   └── /inbox/:id     → Thread de conversación
-├── /calendar          → Calendario de visitas
-│   └── /calendar/new  → Crear cita (modal o drawer)
-├── /listings          → Grid de propiedades
-│   ├── /listings/:id  → Detalle de listing (actividad, edición)
-│   └── /listings/new  → Crear listing (wizard)
-├── /credits           → Saldo, historial, reglas
-│   └── /credits/recharge → Recarga (modal o página)
-├── /team              → Miembros, roles, routing
-│   └── /team/invite   → Invitar miembro (modal)
-├── /reports           → Dashboards analíticos
-│   └── /reports/:type → Reporte específico
-└── /settings          → Configuración
-    ├── /settings/profile
-    ├── /settings/notifications
-    ├── /settings/zones
-    └── /settings/integrations
-```
+### 2.2 Objetivos del usuario (agente)
+1. Ver “qué cambió” desde la última visita: mensajes, leads, tareas, citas.
+2. Ejecutar siguientes acciones en <30 segundos desde el dashboard.
+3. Tener historial confiable (mensajes, tareas, cambios de etapa, notas).
+4. Entender gasto/consumo de créditos y su impacto.
 
-## Layout Principal
+### 2.3 KPIs por etapa (definición + fórmula)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ [☰] Logo          🔍 Search (⌘K)     🔔 Notif  👤 Agent Menu   │ ← Topbar
-├──────────┬──────────────────────────────────────────────────────┤
-│          │                                                      │
-│  Overview│     Main Content Area                                │
-│  Leads   │     (routed component)                               │
-│  Inbox   │                                                      │
-│  Calendar│     ┌─────────────────────────────────────────────┐  │
-│  Listings│     │  Content with panels, tables, cards         │  │
-│  Credits │     │  Drawer/modals for detail views             │  │
-│  Team    │     └─────────────────────────────────────────────┘  │
-│  Reports │                                                      │
-│  ──────  │                                                      │
-│  Settings│                                                      │
-│          │                                                      │
-└──────────┴──────────────────────────────────────────────────────┘
-   Sidebar (collapsible)
-```
+| Etapa | KPI | Definición | Fórmula | Frecuencia | Fuente |
+|---|---|---|---|---|---|
+| Activación | Perfil completo | % agentes con setup mínimo completado | agentes_con_setup_min / agentes_registrados | diaria | Portal |
+| Activación | Primera respuesta | % agentes que responden ≥1 lead en 24h desde registro | agentes_con_1ra_respuesta_24h / agentes_registrados | diaria | Inbox |
+| Engagement | Sesiones diarias | % agentes con ≥1 sesión/día | agentes_DAU / agentes_activos | diaria | Telemetría |
+| Engagement | “Return triggers” consumidos | Leads/mensajes/tareas vistos en sesión | conteo_eventos_vistos_por_sesión | diaria | Eventos |
+| Eficiencia | Tiempo de respuesta inicial (TTR) | Mediana de minutos a primer reply | median( first_reply_at - lead_created_at ) | diaria/sem | Inbox |
+| Eficiencia | SLA incumplido | % leads nuevos sin respuesta en X horas | leads_sla_breached / leads_nuevos | diaria | SLA |
+| Conversión | Lead → Cita | % leads que alcanzan etapa “Cita programada” | leads_con_cita / leads_nuevos | semanal | Pipeline |
+| Conversión | Cita → Oferta | % citas con outcome “Oferta” | ofertas / citas_realizadas | mensual | Actividades |
+| Retención | WAU/MAU | Sticky factor | WAU / MAU | semanal/mensual | Telemetría |
+| Retención | Cohorte D7 / D30 | Retención por cohorte | usuarios_activos_DN / usuarios_iniciales | semanal | Telemetría |
+| Monetización | ARPA créditos | Créditos consumidos por agente activo | créditos_consumidos / agentes_activos | semanal | Ledger |
+| Monetización | Disputa de ledger | % transacciones disputadas | tx_disputadas / tx_totales | mensual | Auditoría |
 
-## Componentes de Navegación
-
-| Componente | Comportamiento | Keyboard |
-|------------|----------------|----------|
-| **Sidebar** | Collapsible a iconos, sticky, scroll interno | - |
-| **Topbar** | Fixed, search global, notificaciones, user menu | ⌘K = search |
-| **Command Palette** | Overlay, fuzzy search, acciones rápidas | ⌘K |
-| **Breadcrumbs** | Solo en vistas anidadas (lead detail, listing detail) | - |
-| **Tabs** | Dentro de módulos (leads: pipeline/list, calendar: week/month) | ←→ |
-
-## Responsive Breakpoints
-
-| Breakpoint | Sidebar | Topbar | Content |
-|------------|---------|--------|---------|
-| Desktop (≥1280px) | Expanded 240px | Full | Fluid max-w-7xl |
-| Tablet (768-1279px) | Collapsed 64px (icons) | Full | Fluid |
-| Mobile (<768px) | Hidden (hamburger) | Simplified | Full-width |
-
-## Atajos de Teclado (Power Users)
-
-| Atajo | Acción |
-|-------|--------|
-| ⌘K | Command palette |
-| ⌘/ | Keyboard shortcuts help |
-| g + o | Go to Overview |
-| g + l | Go to Leads |
-| g + i | Go to Inbox |
-| g + c | Go to Calendar |
-| n | New (contextual: lead, message, appointment) |
-| Esc | Close modal/drawer/palette |
-| j/k | Navigate list items |
-| Enter | Open selected item |
+Notas:
+- Valores objetivo (targets) se definen en “Por definir” y se ajustan tras piloto.
+- KPI “Tiempo de respuesta” se calcula por lead y por conversación (según canal).
 
 ---
 
-# 5. MOTION SYSTEM Y MICRO-INTERACTIONS SPEC
+## 3. Alcance: MVP / V1 / No-alcance
 
-## Principios
+### 3.1 MVP (sí o sí)
+1. Leads Inbox:
+   - Lista de conversaciones/threads, filtros, estados (nuevo/en curso/cerrado).
+   - Vista conversación (mensajes) con contexto del lead.
+   - Notas internas y tareas desde el hilo.
+   - Plantillas básicas (quick replies).
+2. CRM / Pipeline:
+   - Kanban + lista alternativa.
+   - Etapas estándar; mover etapas con undo.
+   - SLA y recordatorios.
+3. Contactos:
+   - Unificación lead/contacto.
+   - Dedupe básico (email/teléfono) con sugerencias de merge.
+4. Actividades + Timeline + Tasks:
+   - Log de eventos (mensajes, llamadas manuales, cambios de etapa).
+   - Tasks con due date, prioridad, estado y recordatorios in-app.
+5. Sistema de Créditos (MVP operativo):
+   - Saldo, ledger, consumo para al menos 2 “productos” (por ejemplo: verificación y boost).
+   - Reglas de idempotencia + antifraude básicas.
+   - UX de errores y soporte.
+6. Navegación / IA:
+   - `/agents/*` con layout propio (sidebar + topbar).
+   - Command palette básico y atajos principales.
+7. Analítica mínima:
+   - Eventos críticos (lead recibido, mensaje enviado, etapa cambiada, cita creada, crédito consumido).
 
-1. **Rapidez**: Las animaciones no deben sentirse lentas. Máximo 300ms para feedback, 400ms para transiciones.
-2. **Propósito**: Cada animación comunica algo (confirmación, cambio de estado, jerarquía, conexión).
-3. **Consistencia**: Mismos tokens de easing y duration en toda la app.
-4. **Accesibilidad**: Respetar `prefers-reduced-motion`. Fallback a transiciones instantáneas.
-5. **Performance**: 60fps. Usar `transform` y `opacity`. Evitar layout thrash.
+### 3.2 V1 (expansión)
+- Equipo y roles (RBAC completo), invitaciones, reasignación, routing simple.
+- Calendario con vistas semana/mes (si en MVP solo hay lista de tareas/citas).
+- Reportes iniciales y “score” explicable.
+- Integraciones (por definir): calendario externo, notificaciones push, etc.
+- Automatizaciones: reglas de tareas sugeridas y follow-ups.
 
-## Tokens de Motion
-
-```typescript
-// src/lib/motion/tokens.ts
-
-export const duration = {
-  instant: 0,          // Para reduced-motion
-  fast: 150,           // Micro-feedback (hover, focus, toggle)
-  normal: 250,         // Standard transitions
-  slow: 400,           // Modals, drawers, page transitions
-  emphasis: 600,       // Celebrations, onboarding
-} as const;
-
-export const easing = {
-  // Para entradas y movimientos naturales
-  easeOut: [0.16, 1, 0.3, 1],           // Desacelera al final
-  // Para salidas
-  easeIn: [0.4, 0, 1, 1],               // Acelera al inicio
-  // Para movimientos con rebote sutil
-  spring: { type: "spring", stiffness: 400, damping: 30 },
-  // Para elementos que "aparecen" (scale)
-  springBouncy: { type: "spring", stiffness: 300, damping: 20 },
-  // Linear para progress bars
-  linear: [0, 0, 1, 1],
-} as const;
-
-export const distance = {
-  xs: 4,    // Micro-shifts
-  sm: 8,    // Subtle movements
-  md: 16,   // Standard movements
-  lg: 24,   // Emphasis
-  xl: 40,   // Large transitions
-} as const;
-```
-
-## Animaciones por Componente
-
-### Botones
-
-```typescript
-// Hover: scale sutil
-whileHover={{ scale: 1.02 }}
-whileTap={{ scale: 0.98 }}
-transition={{ duration: duration.fast / 1000 }}
-
-// Loading state: spinner fade-in
-// Success state: check icon spring-in, button bg transition
-// Error state: shake (translateX oscillation 3 cycles)
-```
-
-### Tabs
-
-```typescript
-// Active indicator: layoutId animation (shared layout)
-<motion.div layoutId="activeTab" transition={easing.spring} />
-
-// Content: fade + slide desde dirección de tab
-initial={{ opacity: 0, x: direction * distance.md }}
-animate={{ opacity: 1, x: 0 }}
-exit={{ opacity: 0, x: -direction * distance.md }}
-```
-
-### Modals / Dialogs
-
-```typescript
-// Backdrop: fade-in
-initial={{ opacity: 0 }}
-animate={{ opacity: 1 }}
-
-// Content: scale + fade desde centro
-initial={{ opacity: 0, scale: 0.95, y: distance.sm }}
-animate={{ opacity: 1, scale: 1, y: 0 }}
-exit={{ opacity: 0, scale: 0.95, y: distance.sm }}
-transition={{ duration: duration.normal / 1000, ease: easing.easeOut }}
-```
-
-### Drawers (Side Panels)
-
-```typescript
-// Slide desde el lado correspondiente
-initial={{ x: "100%" }}  // Right drawer
-animate={{ x: 0 }}
-exit={{ x: "100%" }}
-transition={{ duration: duration.slow / 1000, ease: easing.easeOut }}
-```
-
-### Cards
-
-```typescript
-// Hover: lift con shadow
-whileHover={{ 
-  y: -distance.xs, 
-  boxShadow: "0 12px 24px -8px rgba(0,0,0,0.15)" 
-}}
-
-// Drag preview (Kanban)
-whileDrag={{ 
-  scale: 1.02, 
-  boxShadow: "0 20px 40px -12px rgba(0,0,0,0.25)",
-  cursor: "grabbing"
-}}
-```
-
-### Skeleton Loading
-
-```typescript
-// Shimmer: gradient animation continuo
-background: linear-gradient(
-  90deg,
-  hsl(var(--muted)) 0%,
-  hsl(var(--muted-foreground) / 0.1) 50%,
-  hsl(var(--muted)) 100%
-)
-animation: shimmer 1.5s infinite
-@keyframes shimmer {
-  0% { background-position: -200% 0 }
-  100% { background-position: 200% 0 }
-}
-```
-
-### Content Reveal
-
-```typescript
-// Staggered children: cada item con delay incremental
-<motion.ul variants={containerVariants}>
-  {items.map((item, i) => (
-    <motion.li
-      variants={itemVariants}
-      custom={i}
-    />
-  ))}
-</motion.ul>
-
-const containerVariants = {
-  hidden: {},
-  visible: {
-    transition: { staggerChildren: 0.05 }
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: distance.sm },
-  visible: { opacity: 1, y: 0 }
-};
-```
-
-### Empty States
-
-```typescript
-// Ilustración: fade-in lento con float sutil
-animate={{ 
-  y: [0, -distance.xs, 0] 
-}}
-transition={{ 
-  duration: 3, 
-  repeat: Infinity, 
-  ease: "easeInOut" 
-}}
-```
-
-### Toasts / Snackbars
-
-```typescript
-// Entrada desde arriba/abajo según posición
-initial={{ opacity: 0, y: position === "top" ? -distance.md : distance.md, scale: 0.95 }}
-animate={{ opacity: 1, y: 0, scale: 1 }}
-exit={{ opacity: 0, scale: 0.95, transition: { duration: duration.fast / 1000 } }}
-
-// Auto-dismiss: progress bar underline
-<motion.div 
-  initial={{ scaleX: 1 }} 
-  animate={{ scaleX: 0 }} 
-  transition={{ duration: dismissTime / 1000, ease: "linear" }}
-/>
-```
-
-### Progress + Celebrations
-
-```typescript
-// Progress bar: width transition suave
-transition={{ duration: duration.normal / 1000, ease: easing.easeOut }}
-
-// Milestone confetti (solo en hitos importantes):
-// - Usar canvas-confetti (OSS, MIT)
-// - Disparar con < 50 partículas
-// - Duración máxima 1.5s
-// - Solo en: verificación aprobada, 100% perfil, primer cierre, badge ganado
-```
-
-## Estados y Transiciones
-
-### Optimistic Updates
-
-```typescript
-// 1. Inmediatamente mostrar estado esperado (opacity reducida ligeramente)
-// 2. Animar hacia estado confirmado cuando llegue respuesta
-// 3. Si falla: revertir con shake + toast de error
-
-// Ejemplo: Mover lead en pipeline
-const handleDrop = async (leadId, newStage) => {
-  // Optimistic
-  updateLeadLocally(leadId, newStage);
-  playSuccessHaptic(); // Vibración móvil si aplica
-  
-  try {
-    await api.updateLead(leadId, { stage: newStage });
-    showMicroConfirmation(); // Check verde sutil
-  } catch (error) {
-    revertLeadLocally(leadId);
-    shakeCard(leadId);
-    toast.error("No se pudo mover el lead");
-  }
-};
-```
-
-### Error Recoverable
-
-```typescript
-// Shake suave: 3 oscilaciones, ±3px
-animate={{ x: [0, -3, 3, -3, 3, 0] }}
-transition={{ duration: 0.4 }}
-
-// Inline hint: aparecer debajo del campo con fade + slide
-initial={{ opacity: 0, height: 0, y: -4 }}
-animate={{ opacity: 1, height: "auto", y: 0 }}
-```
-
-### Save Indicator (Autosave)
-
-```typescript
-// Estados: idle → saving → saved → idle
-// saving: spinner pequeño + "Guardando..."
-// saved: check verde + "Guardado" → fade out después de 2s
-// Posición: esquina superior derecha del formulario o inline
-<AnimatePresence>
-  {saveState === "saving" && <Spinner />}
-  {saveState === "saved" && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      ✓ Guardado
-    </motion.div>
-  )}
-</AnimatePresence>
-```
-
-## Reduced Motion
-
-```typescript
-// Hook para detectar preferencia
-const prefersReducedMotion = useReducedMotion();
-
-// Variantes condicionales
-const variants = prefersReducedMotion
-  ? { initial: {}, animate: {}, exit: {} }
-  : standardVariants;
-
-// En framer-motion v11+:
-<MotionConfig reducedMotion="user">
-  <App />
-</MotionConfig>
-```
-
-## Performance Guidelines
-
-1. **Usar `will-change` sparingly**: Solo en elementos que animarán inminentemente
-2. **Prefer `transform` y `opacity`**: Son las únicas propiedades GPU-accelerated
-3. **Virtualizar listas largas**: >50 items → usar react-virtuoso o similar
-4. **Lazy mount modals**: No renderizar hasta que se abran
-5. **Debounce resize handlers**: 100ms mínimo
-6. **Profile en Chrome DevTools**: Mantener <16ms por frame
+### 3.3 No-alcance (explícito)
+- Selección de proveedor de backend/infra (AWS/Supabase/etc). Fuera de alcance: decisión técnica final.
+- Integración completa con telefonía/SMS si implica licencias o servicios pagos (solo especificación UI/contratos).
+- IA generativa en producción (solo espacio para futuro).
+- MLS/IDX integraciones complejas (futuro).
 
 ---
 
-# 6. FLUJOS CRÍTICOS
+## 4. Principios de producto y UX
 
-## A) Registro / Onboarding
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        FLUJO DE ONBOARDING                       │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   [Inicio]                                                       │
-│      │                                                           │
-│      ▼                                                           │
-│   ┌─────────────────┐                                            │
-│   │ 1. Datos básicos│  Nombre, email, teléfono, foto             │
-│   │    (requerido)  │  Validación inline                         │
-│   └────────┬────────┘                                            │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌─────────────────┐                                            │
-│   │ 2. Licencia     │  Número, estado, fecha expiración          │
-│   │    (requerido)  │  Verificación async (status: pendiente)    │
-│   └────────┬────────┘                                            │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌─────────────────┐                                            │
-│   │ 3. Zonas        │  Mapa interactivo o lista de áreas         │
-│   │    (requerido)  │  Mínimo 1, máximo 10                       │
-│   └────────┬────────┘                                            │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌─────────────────┐                                            │
-│   │ 4. Especialidad │  Checkboxes: Compra, Venta, Alquiler,      │
-│   │    (opcional)   │  Comercial, Lujo, Primera vivienda...      │
-│   └────────┬────────┘                                            │
-│            │                                                     │
-│            ▼                                                     │
-│   ┌─────────────────┐                                            │
-│   │ 5. Disponibilid │  Horarios de contacto preferidos           │
-│   │    (opcional)   │  Quiet hours                               │
-│   └────────┬────────┘                                            │
-│            │                                                     │
-│            ▼                                                     │
-│   [Dashboard con checklist de "Perfil 60% → 100%"]               │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-
-Edge Cases:
-- Licencia inválida: Mensaje claro, opción de reintentar
-- Sesión interrumpida: Guardar progreso, retomar donde quedó
-- Foto muy grande: Comprimir client-side antes de upload
-- Zonas superpuestas: Warning no bloqueante
-```
-
-## B) Leads → Pipeline → Conversación → Cita → Cierre
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              FLUJO DE LEADS                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  [Lead Entrante]                                                            │
-│       │                                                                     │
-│       ├── Origen: Marketplace, Referido, Manual, Integración               │
-│       │                                                                     │
-│       ▼                                                                     │
-│  ┌─────────┐    ┌────────────┐    ┌───────────┐    ┌────────┐    ┌───────┐ │
-│  │  NUEVO  │───▶│ CONTACTADO │───▶│ EN CHARLA │───▶│  CITA  │───▶│CERRADO│ │
-│  └─────────┘    └────────────┘    └───────────┘    └────────┘    └───────┘ │
-│       │               │                │               │             │      │
-│       │               │                │               │             ├─ WON │
-│       │               │                │               │             └─ LOST│
-│       │               │                │               │                    │
-│       ▼               ▼                ▼               ▼                    │
-│  [Timeout 24h]   [Timeout 48h]   [Timeout 72h]   [No-show]                  │
-│  → Reminder      → Reminder      → Reminder      → Reschedule              │
-│                                                                             │
-│  En cada transición:                                                        │
-│  - Validar permisos (¿es mi lead o de mi equipo?)                          │
-│  - Log en timeline                                                          │
-│  - Trigger notificación si aplica                                          │
-│  - Actualizar métricas en tiempo real                                       │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-Edge Cases:
-- Lead duplicado: Merge con confirmación
-- Lead sin datos de contacto: Marcar como "incompleto"
-- Múltiples agentes asignados: Mostrar warning, resolver con team leader
-- Lead inactivo >30 días: Sugerir archivar
-```
-
-## C) Chat Agente ↔ Usuario
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      FLUJO DE CHAT                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ Agente                                      Usuario      │   │
-│  ├─────────────────────────────────────────────────────────┤   │
-│  │                                                         │   │
-│  │  Redactar mensaje                                       │   │
-│  │       │                                                 │   │
-│  │       ├── Texto libre                                   │   │
-│  │       ├── Template rápido (keyboard shortcut: /t)       │   │
-│  │       ├── Adjunto (drag & drop o selector)              │   │
-│  │       └── Nota interna (solo visible para equipo)       │   │
-│  │       │                                                 │   │
-│  │       ▼                                                 │   │
-│  │  [Enviar]                                               │   │
-│  │       │                                                 │   │
-│  │       ├── Optimistic: mostrar con ✓ (enviado)          │   │
-│  │       ├── Server ACK: ✓✓ (entregado)                   │   │
-│  │       └── Read receipt: ✓✓ azul (leído)                │   │
-│  │                                                         │   │
-│  │  Recibir mensaje                                        │   │
-│  │       │                                                 │   │
-│  │       ├── Notificación in-app (si pestaña activa)      │   │
-│  │       ├── Badge en sidebar                              │   │
-│  │       └── Push/email según preferencias                 │   │
-│  │                                                         │   │
-│  │  SLA Tracking                                           │   │
-│  │       │                                                 │   │
-│  │       ├── Timer visible: "2h sin respuesta"            │   │
-│  │       ├── Escalation: highlight en inbox               │   │
-│  │       └── Auto-reminder: notificación suave            │   │
-│  │                                                         │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Edge Cases:
-- Mensaje muy largo: Truncar con "ver más"
-- Adjunto fallido: Retry automático x3, luego manual
-- Usuario bloqueado: No permitir enviar, mostrar estado
-- Chat cerrado (lead archivado): Solo lectura, opción de reabrir
-- Rate limiting: Feedback claro, sin perder el mensaje draft
-```
-
-## D) Calendario y Visitas
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      FLUJO DE CITAS                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  [Crear Cita]                                                   │
-│       │                                                         │
-│       ├── Seleccionar lead (o crear nuevo)                     │
-│       ├── Seleccionar listing (o dirección manual)             │
-│       ├── Fecha/hora (validar disponibilidad)                  │
-│       ├── Tipo: Virtual / Presencial                           │
-│       └── Notas opcionales                                     │
-│       │                                                         │
-│       ▼                                                         │
-│  ┌──────────┐                                                   │
-│  │ PENDIENTE│ ← Estado inicial                                  │
-│  └────┬─────┘                                                   │
-│       │                                                         │
-│       ├──[Usuario confirma]───▶ CONFIRMADA                     │
-│       │                              │                          │
-│       │                              ├──[Completada]──▶ REALIZADA│
-│       │                              │                          │
-│       │                              ├──[No-show]──▶ NO_SHOW    │
-│       │                              │                          │
-│       │                              └──[Reprogramar]──▶ PENDING│
-│       │                                                         │
-│       └──[Usuario/Agente cancela]───▶ CANCELADA                │
-│                                                                 │
-│  Recordatorios automáticos:                                     │
-│  - 24h antes: "Mañana tienes cita con [Cliente]"               │
-│  - 1h antes: "En 1 hora: visita en [Dirección]"                │
-│  - Post-cita: "¿Cómo fue la visita?" (feedback prompt)         │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Edge Cases:
-- Conflicto de horario: Warning antes de guardar
-- Zona horaria diferente: Mostrar ambas zonas
-- Cancelación tardía (<2h): Flag en historial
-- Listing no disponible: Warning, permitir continuar con nota
-```
-
-## E) Listings
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      FLUJO DE LISTINGS                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  [Crear Listing]                                                │
-│       │                                                         │
-│       ├── Datos básicos (dirección, tipo, precio)              │
-│       ├── Características (beds, baths, sqft, amenities)       │
-│       ├── Media (fotos, videos, tour virtual)                  │
-│       └── Descripción                                          │
-│       │                                                         │
-│       ▼                                                         │
-│  ┌────────┐                                                     │
-│  │ DRAFT  │ ← Puede editarse, no visible en marketplace        │
-│  └───┬────┘                                                     │
-│      │                                                          │
-│      ├──[Publicar]───▶ ACTIVE ◄──────────────────┐             │
-│      │                    │                       │             │
-│      │                    ├──[Pausar]───▶ PAUSED ─┘             │
-│      │                    │                                     │
-│      │                    ├──[Vender/Alquilar]──▶ CLOSED        │
-│      │                    │                                     │
-│      │                    └──[Request Verificación]             │
-│      │                             │                            │
-│      │                             ▼                            │
-│      │                    ┌─────────────────┐                   │
-│      │                    │ PENDING_VERIFY  │                   │
-│      │                    └────────┬────────┘                   │
-│      │                             │                            │
-│      │                    ┌────────┴────────┐                   │
-│      │                    ▼                 ▼                   │
-│      │               VERIFIED          REJECTED                 │
-│      │               (badge)          (feedback)                │
-│      │                                                          │
-│      └──[Archivar]───▶ ARCHIVED (solo lectura)                 │
-│                                                                 │
-│  Feed de Actividad (por listing):                               │
-│  - "15 views hoy (+5 vs ayer)"                                 │
-│  - "3 saves esta semana"                                       │
-│  - "Nuevo mensaje sobre este listing"                          │
-│  - "Recomendación: baja el precio 5%"                          │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Edge Cases:
-- Fotos muy pesadas: Compresión + progress bar
-- Datos obligatorios faltantes: No permitir publicar
-- Listing expirado (>90 días): Prompt de renovación
-- Precio fuera de rango de zona: Warning informativo
-```
-
-## F) Créditos / Billing
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      FLUJO DE CRÉDITOS                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Vista Principal:                                               │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  Saldo Actual: 150 créditos     [+ Recargar]            │   │
-│  │  ─────────────────────────────────────────────          │   │
-│  │                                                         │   │
-│  │  Consumo este mes:                                      │   │
-│  │  ┌─────────────────────────────────────────┐            │   │
-│  │  │ ████████████░░░░░░░░ 65/100 créditos    │            │   │
-│  │  └─────────────────────────────────────────┘            │   │
-│  │                                                         │   │
-│  │  Historial (ledger):                                    │   │
-│  │  ┌───────────┬──────────────────┬─────────┐            │   │
-│  │  │ Fecha     │ Concepto         │ Monto   │            │   │
-│  │  ├───────────┼──────────────────┼─────────┤            │   │
-│  │  │ 28 Ene    │ Lead premium     │ -5      │            │   │
-│  │  │ 27 Ene    │ Boost listing #3 │ -10     │            │   │
-│  │  │ 25 Ene    │ Recarga          │ +100    │            │   │
-│  │  └───────────┴──────────────────┴─────────┘            │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  Reglas de Consumo (configurables):                             │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ ☑ Lead básico: 2 créditos                               │   │
-│  │ ☑ Lead premium: 5 créditos                              │   │
-│  │ ☑ Boost listing (24h): 10 créditos                      │   │
-│  │ ☐ Featured listing (7d): 50 créditos [no habilitado]    │   │
-│  │                                                         │   │
-│  │ Límite diario: [50] créditos                            │   │
-│  │ Alerta de saldo bajo: [< 20] créditos                   │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  Flujo de Recarga (UI only, sin backend vendor):               │
-│  [Seleccionar paquete] → [Confirmar] → [Procesando...] →       │
-│  [Éxito + confetti] o [Error + retry]                          │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Edge Cases:
-- Saldo insuficiente: Bloquear acción, sugerir recarga
-- Recarga fallida: Reintentar, no cobrar dos veces
-- Consumo disputado: Mostrar detalle, link a soporte
-- Múltiples agentes en team: Wallet compartido o individual (configurable)
-```
-
-## G) Equipo
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      FLUJO DE EQUIPO                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Roles disponibles:                                             │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ OWNER        │ Todo. Solo 1 por equipo.                 │   │
-│  │ ADMIN        │ Gestión team, no billing                 │   │
-│  │ AGENT        │ Leads propios, listings propios          │   │
-│  │ ASSISTANT    │ Solo lectura + notas                     │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  Flujo de Invitación:                                           │
-│  [Ingresar email] → [Seleccionar rol] → [Enviar] →             │
-│  [Pendiente] → [Aceptado] o [Expirado 7d]                      │
-│                                                                 │
-│  Routing Rules (V1):                                            │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │ SI zona = [Centro] Y precio < 500k                      │   │
-│  │ ENTONCES asignar a [Agente A]                           │   │
-│  │ ─────────────────────────────────────────               │   │
-│  │ SI tipo = [Comercial]                                   │   │
-│  │ ENTONCES asignar a [Agente B, Agente C] (round-robin)   │   │
-│  │ ─────────────────────────────────────────               │   │
-│  │ DEFAULT: asignar a [Pool general]                       │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  Pausar Agente:                                                 │
-│  - No recibe nuevos leads                                       │
-│  - Leads actuales se reasignan o quedan asignados              │
-│  - Puede seguir trabajando leads existentes                    │
-│                                                                 │
-│  Reasignación:                                                  │
-│  - Manual: Owner/Admin selecciona leads y nuevo agente         │
-│  - Automática: Al pausar, opción de redistribuir               │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-
-Edge Cases:
-- Último owner quiere irse: Debe transferir ownership primero
-- Invitación a email ya en otro team: Error, contactar soporte
-- Agente con leads pausado por mucho tiempo: Reminder a admin
-- Conflicto de routing rules: Evaluar en orden, primera que matchea gana
-```
+1. Utilidad antes que ornamentación: la interacción debe acelerar decisiones.
+2. “Qué cambió” primero: cada visita debe mostrar novedades relevantes.
+3. Progreso visible: el agente debe sentir avance (etapas, tareas, SLA).
+4. Feedback inmediato: acciones con confirmación <100ms (optimistic UI cuando aplique).
+5. Reversibilidad: undo para acciones de alto riesgo (mover etapa, cerrar lead, consumir créditos si no ha ejecutado el “producto”).
+6. Transparencia: créditos y consumo siempre explicables (ledger claro).
+7. Accesibilidad y control: soporte `prefers-reduced-motion`, keyboard-first y estados visibles.
+8. No dark patterns: notificaciones controlables, quiet hours, sin trampas de compra.
+9. Consistencia: mismos patrones de list/detail, drawers, chips y estados en todo el portal.
+10. Rendimiento como feature: listas grandes virtualizadas, filtros persistentes, cargas progresivas.
+11. Datos confiables: dedupe y auditoría para evitar historial incoherente.
+12. Colaboración segura: RBAC explícito; acciones registradas (audit log).
+13. “Next best action”: el sistema sugiere, el agente decide.
+14. Minimizar fricción: formularios cortos, defaults inteligentes, autoguardado visible.
+15. Escalable por diseño: cada módulo define contratos y eventos desde el inicio.
 
 ---
 
-# 7. DISEÑO DE LOOPS DE RETORNO
+## 5. Personas y Jobs-to-be-done
 
-## Principios (Sin Dark Patterns)
+### Persona 1: Agente independiente (alto volumen)
+- JTBD: “Cuando recibo leads, necesito responder rápido y dar seguimiento sin perder contexto para convertirlos en citas.”
+- Dolor: se le pierden chats y olvidos de follow-up.
 
-1. **Valor real**: Cada notificación debe ofrecer algo útil
-2. **Control total**: El usuario decide qué, cuándo y cómo
-3. **Quiet hours**: Respeto absoluto al tiempo de descanso
-4. **Frecuencia justa**: No más de X por día (configurable)
-5. **Transparencia**: Explicar por qué se notifica
+### Persona 2: Agente nuevo (bajo volumen, alta incertidumbre)
+- JTBD: “Necesito una guía de pasos claros para no olvidar nada y aprender el proceso.”
+- Dolor: no sabe qué hacer después de un primer contacto.
 
-## Return Triggers
+### Persona 3: Team lead / Broker (gestión de equipo)
+- JTBD: “Necesito visibilidad y control: asignar leads, medir respuesta y redistribuir carga.”
+- Dolor: falta de SLA y trazabilidad.
 
-| # | Trigger | Señal | Valor para el Agente | UI Surface | Frecuencia | Anti-spam |
-|---|---------|-------|---------------------|------------|------------|-----------|
-| 1 | **Lead nuevo** | Lead asignado | Oportunidad de negocio | Push + Inbox badge + Banner | Inmediato | Agregar en batches si >3 en 5min |
-| 2 | **Mensaje nuevo** | Usuario responde | Avanzar conversación | Push + Inbox badge | Inmediato | Max 1 push por conversación/15min |
-| 3 | **Cita confirmada** | Usuario acepta | Certeza de agenda | Push + Calendar badge | Inmediato | - |
-| 4 | **Cita cancelada** | Usuario cancela | Liberar tiempo | Push + Calendar badge | Inmediato | - |
-| 5 | **Listing verificado** | Staff aprueba | Credibilidad, más leads | Push + Success modal | Al aprobar | Solo cuando es nuevo |
-| 6 | **Listing boost de views** | Views > avg×2 | Listing atractivo | In-app notification | 1x/día | Solo si >50 views |
-| 7 | **Lead sin respuesta** | >2h sin reply | Evitar perder lead | In-app warning | A las 2h, 6h, 24h | Max 3 por lead |
-| 8 | **Tarea vence hoy** | Due date = today | Organización | Morning digest + Badge | 1x mañana | Agrupar todas las tareas |
-| 9 | **Baja el precio (sugerencia)** | Listing >30 días sin leads | Acción para mejorar | In-app card | 1x/semana | Solo 1 sugerencia activa |
-| 10 | **Perfil incompleto** | Completion <100% | Mejor visibilidad | Dashboard widget | Persistente | No notificar, solo mostrar |
-| 11 | **Saldo bajo** | Balance <20 | Evitar bloqueo | Banner + Push | 1x al cruzar umbral | No repetir si no recarga |
-| 12 | **Resumen semanal** | Domingo 9am | Reflexión, celebración | Email/In-app | 1x/semana | Opt-in |
-
-## Notification Center In-App
-
-```
-┌─────────────────────────────────────────┐
-│ 🔔 Notificaciones                 [✓ all] 
-├─────────────────────────────────────────┤
-│                                         │
-│ ● Nuevo lead: María García        2 min │
-│   Interesada en Casa Centro #45         │
-│                                         │
-│ ● Mensaje de Juan Pérez          15 min │
-│   "Me gustaría agendar una visita..."   │
-│                                         │
-│ ○ Listing #23 verificado           1 hr │
-│   Tu departamento ahora tiene badge ✓   │
-│                                         │
-│ ○ Resumen del día                  8 hr │
-│   3 leads, 5 mensajes, 1 cita           │
-│                                         │
-├─────────────────────────────────────────┤
-│ [Ver todas] [Marcar todas leídas]       │
-└─────────────────────────────────────────┘
-
-Estados: ● No leída  ○ Leída
-Acciones: Click → navegar, Swipe → archivar
-```
-
-## Digest Diario/Semanal (In-App o Email)
-
-```
-┌─────────────────────────────────────────┐
-│ 📊 Tu resumen de hoy - 28 Ene 2026      │
-├─────────────────────────────────────────┤
-│                                         │
-│ 🎯 Lo más importante:                   │
-│    • 2 leads nuevos esperan respuesta   │
-│    • Cita con María mañana 10am         │
-│    • Listing #45 tuvo 89 views (+45%)   │
-│                                         │
-│ 📈 Tus métricas:                        │
-│    Tiempo respuesta: 45 min (meta: <1h) │
-│    Leads respondidos: 8/8 (100% 🎉)     │
-│    Citas completadas: 2/2               │
-│                                         │
-│ 💡 Siguiente paso:                      │
-│    Responder a los 2 leads pendientes   │
-│    [Ir al Inbox →]                      │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-## Controles de Usuario
-
-```
-┌─────────────────────────────────────────┐
-│ ⚙️ Preferencias de notificaciones       │
-├─────────────────────────────────────────┤
-│                                         │
-│ In-App:                                 │
-│ ☑ Leads nuevos                          │
-│ ☑ Mensajes nuevos                       │
-│ ☑ Cambios de citas                      │
-│ ☐ Sugerencias de optimización           │
-│                                         │
-│ Push:                                   │
-│ ☑ Leads nuevos                          │
-│ ☑ Mensajes nuevos                       │
-│ ☐ Recordatorios de tareas               │
-│                                         │
-│ Email:                                  │
-│ ☐ Cada notificación importante          │
-│ ☑ Digest diario                         │
-│ ☑ Resumen semanal                       │
-│                                         │
-│ Quiet Hours:                            │
-│ ☑ Activar    De [21:00] a [08:00]       │
-│   Excepto: ☑ Leads nuevos (siempre)     │
-│                                         │
-│ Límite diario: [20] notificaciones max  │
-│                                         │
-└─────────────────────────────────────────┘
-```
+### Persona 4: Coordinador/Asistente
+- JTBD: “Necesito agendar citas y hacer seguimiento por el agente con permisos limitados.”
+- Dolor: acceso a datos sensibles y falta de estructura.
 
 ---
 
-# 8. DATA MODEL + STATE MACHINES
-
-## TypeScript Interfaces
-
-```typescript
-// src/types/agents.ts
-
-// ============ CORE ENTITIES ============
-
-export interface Agent {
-  id: string;
-  email: string;
-  phone: string;
-  firstName: string;
-  lastName: string;
-  avatarUrl?: string;
-  licenseNumber?: string;
-  licenseState?: string;
-  licenseExpiry?: Date;
-  bio?: string;
-  specialties: AgentSpecialty[];
-  zones: Zone[];
-  languages: string[];
-  teamId?: string;
-  role: TeamRole;
-  status: AgentStatus;
-  profileCompletion: number; // 0-100
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export type AgentSpecialty = 
-  | 'residential_buy'
-  | 'residential_sell'
-  | 'residential_rent'
-  | 'commercial'
-  | 'luxury'
-  | 'first_time_buyer'
-  | 'investment'
-  | 'relocation';
-
-export type AgentStatus = 'active' | 'paused' | 'pending_verification' | 'suspended';
-
-export interface Zone {
-  id: string;
-  name: string;
-  type: 'zip' | 'city' | 'neighborhood' | 'polygon';
-  geometry?: GeoJSON.Polygon; // Para polígonos custom
-}
-
-// ============ TEAM ============
-
-export interface Team {
-  id: string;
-  name: string;
-  logoUrl?: string;
-  ownerId: string;
-  members: TeamMember[];
-  routingRules: RoutingRule[];
-  settings: TeamSettings;
-  createdAt: Date;
-}
-
-export interface TeamMember {
-  agentId: string;
-  role: TeamRole;
-  joinedAt: Date;
-  invitedBy: string;
-}
-
-export type TeamRole = 'owner' | 'admin' | 'agent' | 'assistant';
-
-export interface RoutingRule {
-  id: string;
-  priority: number; // Lower = higher priority
-  conditions: RoutingCondition[];
-  assignTo: string[]; // Agent IDs
-  strategy: 'round_robin' | 'least_busy' | 'specific';
-  isActive: boolean;
-}
-
-export interface RoutingCondition {
-  field: 'zone' | 'price' | 'type' | 'source';
-  operator: 'eq' | 'neq' | 'gt' | 'lt' | 'in' | 'contains';
-  value: string | number | string[];
-}
-
-export interface TeamSettings {
-  sharedWallet: boolean;
-  leadVisibility: 'own' | 'team' | 'all';
-  notificationDefaults: NotificationPreferences;
-}
-
-// ============ LEADS ============
-
-export interface Lead {
-  id: string;
-  // Contact info
-  firstName: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  // State
-  stage: LeadStage;
-  score?: number; // 0-100
-  temperature: 'cold' | 'warm' | 'hot';
-  // Assignment
-  assignedTo: string; // Agent ID
-  teamId?: string;
-  // Context
-  source: LeadSource;
-  sourceDetails?: string; // e.g., listing ID, referrer name
-  interestedIn: 'buy' | 'sell' | 'rent';
-  propertyType?: string;
-  budgetMin?: number;
-  budgetMax?: number;
-  preferredZones?: string[];
-  notes?: string;
-  // Engagement
-  lastContactedAt?: Date;
-  lastActivityAt?: Date;
-  nextFollowUpAt?: Date;
-  // Metadata
-  createdAt: Date;
-  updatedAt: Date;
-  closedAt?: Date;
-  closeReason?: CloseReason;
-}
-
-export type LeadStage = 
-  | 'new'
-  | 'contacted'
-  | 'engaged'
-  | 'appointment_set'
-  | 'met'
-  | 'negotiating'
-  | 'closed_won'
-  | 'closed_lost'
-  | 'archived';
-
-export type LeadSource = 
-  | 'marketplace'
-  | 'referral'
-  | 'manual'
-  | 'website'
-  | 'social'
-  | 'integration';
-
-export type CloseReason = 
-  | 'deal_closed'
-  | 'lost_to_competitor'
-  | 'not_ready'
-  | 'unresponsive'
-  | 'budget_mismatch'
-  | 'other';
-
-export interface LeadActivity {
-  id: string;
-  leadId: string;
-  type: LeadActivityType;
-  description: string;
-  metadata?: Record<string, unknown>;
-  createdBy: string; // Agent or 'system'
-  createdAt: Date;
-}
-
-export type LeadActivityType = 
-  | 'stage_change'
-  | 'note_added'
-  | 'message_sent'
-  | 'message_received'
-  | 'call_made'
-  | 'appointment_scheduled'
-  | 'appointment_completed'
-  | 'assignment_changed'
-  | 'property_viewed';
-
-// ============ CONVERSATIONS ============
-
-export interface Conversation {
-  id: string;
-  leadId: string;
-  participants: ConversationParticipant[];
-  lastMessage?: Message;
-  unreadCount: number;
-  status: ConversationStatus;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface ConversationParticipant {
-  type: 'agent' | 'lead';
-  id: string;
-}
-
-export type ConversationStatus = 'active' | 'archived' | 'blocked';
-
-export interface Message {
-  id: string;
-  conversationId: string;
-  senderId: string;
-  senderType: 'agent' | 'lead';
-  content: string;
-  contentType: 'text' | 'image' | 'file' | 'internal_note';
-  attachments?: Attachment[];
-  status: MessageStatus;
-  createdAt: Date;
-  readAt?: Date;
-}
-
-export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
-
-export interface Attachment {
-  id: string;
-  url: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-}
-
-// ============ APPOINTMENTS ============
-
-export interface Appointment {
-  id: string;
-  leadId: string;
-  agentId: string;
-  listingId?: string;
-  type: AppointmentType;
-  status: AppointmentStatus;
-  scheduledAt: Date;
-  duration: number; // minutes
-  location?: string;
-  virtualLink?: string;
-  notes?: string;
-  reminders: AppointmentReminder[];
-  createdAt: Date;
-  updatedAt: Date;
-  completedAt?: Date;
-  outcome?: AppointmentOutcome;
-}
-
-export type AppointmentType = 'showing' | 'consultation' | 'listing_presentation' | 'closing';
-export type AppointmentStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
-
-export interface AppointmentReminder {
-  id: string;
-  type: 'push' | 'email' | 'sms';
-  scheduledFor: Date;
-  sent: boolean;
-}
-
-export interface AppointmentOutcome {
-  interested: boolean;
-  feedback?: string;
-  nextSteps?: string;
-}
-
-// ============ LISTINGS ============
-
-export interface Listing {
-  id: string;
-  agentId: string;
-  teamId?: string;
-  // Property details
-  address: Address;
-  propertyType: PropertyType;
-  listingType: 'sale' | 'rent';
-  price: number;
-  currency: string;
-  // Characteristics
-  bedrooms?: number;
-  bathrooms?: number;
-  squareFeet?: number;
-  yearBuilt?: number;
-  amenities: string[];
-  description: string;
-  // Media
-  media: ListingMedia[];
-  virtualTourUrl?: string;
-  // Status
-  status: ListingStatus;
-  verificationStatus: VerificationStatus;
-  // Activity
-  viewCount: number;
-  saveCount: number;
-  inquiryCount: number;
-  // Dates
-  listedAt?: Date;
-  expiresAt?: Date;
-  soldAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Address {
-  street: string;
-  unit?: string;
-  city: string;
-  state: string;
-  zip: string;
-  country: string;
-  lat?: number;
-  lng?: number;
-}
-
-export type PropertyType = 
-  | 'house'
-  | 'apartment'
-  | 'condo'
-  | 'townhouse'
-  | 'land'
-  | 'commercial'
-  | 'multi_family';
-
-export type ListingStatus = 'draft' | 'active' | 'paused' | 'sold' | 'rented' | 'expired' | 'archived';
-export type VerificationStatus = 'none' | 'pending' | 'verified' | 'rejected';
-
-export interface ListingMedia {
-  id: string;
-  url: string;
-  type: 'image' | 'video';
-  order: number;
-  caption?: string;
-}
-
-export interface ListingActivityEvent {
-  id: string;
-  listingId: string;
-  type: 'view' | 'save' | 'unsave' | 'inquiry' | 'share';
-  userId?: string; // Anonymous if null
-  metadata?: Record<string, unknown>;
-  createdAt: Date;
-}
-
-// ============ CREDITS & BILLING ============
-
-export interface CreditAccount {
-  id: string;
-  ownerId: string; // Agent or Team ID
-  ownerType: 'agent' | 'team';
-  balance: number;
-  currency: 'credits';
-  lowBalanceThreshold: number;
-  dailyLimit?: number;
-  rules: CreditRule[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface CreditRule {
-  id: string;
-  action: CreditAction;
-  cost: number;
-  isEnabled: boolean;
-}
-
-export type CreditAction = 
-  | 'lead_basic'
-  | 'lead_premium'
-  | 'boost_24h'
-  | 'boost_7d'
-  | 'featured_listing'
-  | 'verification_request';
-
-export interface CreditLedgerEntry {
-  id: string;
-  accountId: string;
-  type: 'credit' | 'debit';
-  amount: number;
-  balance: number; // Balance after transaction
-  description: string;
-  referenceType?: 'lead' | 'listing' | 'recharge' | 'refund';
-  referenceId?: string;
-  createdAt: Date;
-}
-
-// ============ NOTIFICATIONS ============
-
-export interface Notification {
-  id: string;
-  recipientId: string;
-  type: NotificationType;
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
-  actionUrl?: string;
-  read: boolean;
-  channels: NotificationChannel[];
-  scheduledFor?: Date;
-  sentAt?: Date;
-  createdAt: Date;
-}
-
-export type NotificationType = 
-  | 'new_lead'
-  | 'new_message'
-  | 'appointment_confirmed'
-  | 'appointment_cancelled'
-  | 'appointment_reminder'
-  | 'listing_verified'
-  | 'listing_activity'
-  | 'lead_stale'
-  | 'task_due'
-  | 'low_balance'
-  | 'weekly_digest';
-
-export type NotificationChannel = 'in_app' | 'push' | 'email' | 'sms';
-
-export interface NotificationPreferences {
-  channels: {
-    [K in NotificationType]?: NotificationChannel[];
-  };
-  quietHours?: {
-    enabled: boolean;
-    start: string; // "21:00"
-    end: string;   // "08:00"
-    timezone: string;
-    exceptions?: NotificationType[];
-  };
-  dailyLimit?: number;
-  digestEnabled: boolean;
-  digestFrequency: 'daily' | 'weekly';
-  digestTime: string; // "09:00"
-}
-
-// ============ TASKS ============
-
-export interface Task {
-  id: string;
-  agentId: string;
-  leadId?: string;
-  listingId?: string;
-  title: string;
-  description?: string;
-  dueAt?: Date;
-  priority: 'low' | 'medium' | 'high';
-  status: 'pending' | 'completed' | 'cancelled';
-  completedAt?: Date;
-  createdAt: Date;
-}
-
-// ============ AUDIT ============
-
-export interface AuditLog {
-  id: string;
-  actorId: string;
-  actorType: 'agent' | 'system' | 'admin';
-  action: string;
-  entityType: string;
-  entityId: string;
-  changes?: Record<string, { old: unknown; new: unknown }>;
-  metadata?: Record<string, unknown>;
-  ipAddress?: string;
-  userAgent?: string;
-  createdAt: Date;
-}
-```
-
-## State Machines
-
-### Lead State Machine
-
-```typescript
-// src/lib/agents/machines/leadMachine.ts
-
-import { createMachine, assign } from 'xstate';
-import type { Lead, LeadStage } from '@/types/agents';
-
-type LeadEvent =
-  | { type: 'CONTACT' }
-  | { type: 'ENGAGE' }
-  | { type: 'SCHEDULE_APPOINTMENT' }
-  | { type: 'COMPLETE_MEETING' }
-  | { type: 'START_NEGOTIATION' }
-  | { type: 'CLOSE_WON'; reason?: string }
-  | { type: 'CLOSE_LOST'; reason: string }
-  | { type: 'ARCHIVE' }
-  | { type: 'REOPEN' };
-
-type LeadContext = {
-  lead: Lead;
-  lastTransitionAt: Date;
-};
-
-export const leadMachine = createMachine({
-  id: 'lead',
-  initial: 'new',
-  context: {} as LeadContext,
-  states: {
-    new: {
-      on: {
-        CONTACT: {
-          target: 'contacted',
-          actions: 'logTransition',
-        },
-        ARCHIVE: 'archived',
-      },
-      after: {
-        // Auto-reminder si no se contacta en 24h
-        86400000: { actions: 'sendStaleReminder' },
-      },
-    },
-    contacted: {
-      on: {
-        ENGAGE: 'engaged',
-        SCHEDULE_APPOINTMENT: 'appointment_set',
-        CLOSE_LOST: {
-          target: 'closed_lost',
-          actions: 'setCloseReason',
-        },
-        ARCHIVE: 'archived',
-      },
-      after: {
-        172800000: { actions: 'sendStaleReminder' }, // 48h
-      },
-    },
-    engaged: {
-      on: {
-        SCHEDULE_APPOINTMENT: 'appointment_set',
-        CLOSE_LOST: {
-          target: 'closed_lost',
-          actions: 'setCloseReason',
-        },
-        ARCHIVE: 'archived',
-      },
-    },
-    appointment_set: {
-      on: {
-        COMPLETE_MEETING: 'met',
-        CLOSE_LOST: {
-          target: 'closed_lost',
-          actions: 'setCloseReason',
-        },
-      },
-    },
-    met: {
-      on: {
-        START_NEGOTIATION: 'negotiating',
-        SCHEDULE_APPOINTMENT: 'appointment_set', // Another appointment
-        CLOSE_WON: {
-          target: 'closed_won',
-          actions: 'celebrate',
-        },
-        CLOSE_LOST: {
-          target: 'closed_lost',
-          actions: 'setCloseReason',
-        },
-      },
-    },
-    negotiating: {
-      on: {
-        CLOSE_WON: {
-          target: 'closed_won',
-          actions: 'celebrate',
-        },
-        CLOSE_LOST: {
-          target: 'closed_lost',
-          actions: 'setCloseReason',
-        },
-      },
-    },
-    closed_won: {
-      type: 'final',
-      entry: 'logClose',
-    },
-    closed_lost: {
-      type: 'final',
-      entry: 'logClose',
-    },
-    archived: {
-      on: {
-        REOPEN: 'new',
-      },
-    },
-  },
-});
-```
-
-### Appointment State Machine
-
-```typescript
-// src/lib/agents/machines/appointmentMachine.ts
-
-import { createMachine } from 'xstate';
-import type { Appointment, AppointmentStatus } from '@/types/agents';
-
-type AppointmentEvent =
-  | { type: 'CONFIRM' }
-  | { type: 'CANCEL'; reason?: string }
-  | { type: 'RESCHEDULE'; newTime: Date }
-  | { type: 'COMPLETE'; outcome: Appointment['outcome'] }
-  | { type: 'MARK_NO_SHOW' };
-
-type AppointmentContext = {
-  appointment: Appointment;
-};
-
-export const appointmentMachine = createMachine({
-  id: 'appointment',
-  initial: 'pending',
-  context: {} as AppointmentContext,
-  states: {
-    pending: {
-      on: {
-        CONFIRM: {
-          target: 'confirmed',
-          actions: ['notifyParties', 'scheduleReminders'],
-        },
-        CANCEL: {
-          target: 'cancelled',
-          actions: 'notifyParties',
-        },
-        RESCHEDULE: {
-          target: 'pending',
-          actions: ['updateTime', 'notifyParties'],
-        },
-      },
-      after: {
-        // Si no se confirma en 24h antes de la cita, enviar reminder
-        AUTO_REMINDER: { actions: 'sendConfirmationReminder' },
-      },
-    },
-    confirmed: {
-      on: {
-        COMPLETE: {
-          target: 'completed',
-          actions: ['recordOutcome', 'requestFeedback'],
-        },
-        CANCEL: {
-          target: 'cancelled',
-          actions: 'notifyParties',
-        },
-        RESCHEDULE: {
-          target: 'pending',
-          actions: ['updateTime', 'notifyParties'],
-        },
-        MARK_NO_SHOW: {
-          target: 'no_show',
-          actions: 'logNoShow',
-        },
-      },
-    },
-    completed: {
-      type: 'final',
-      entry: 'updateLeadActivity',
-    },
-    cancelled: {
-      type: 'final',
-      entry: 'logCancellation',
-    },
-    no_show: {
-      type: 'final',
-      entry: 'updateLeadActivity',
-    },
-  },
-});
-```
+## 6. Roles y permisos (RBAC)
+
+### 6.1 Roles (definición)
+- Agent: gestiona sus leads, inbox, tareas, citas, créditos (si está habilitado).
+- Team Lead: ve y gestiona leads del equipo, reasigna, define reglas simples.
+- Broker/Admin Agencia: administra usuarios, permisos, créditos a nivel agencia, reportes.
+- Assistant: puede crear citas/tareas y registrar actividades, pero no ver ciertos datos financieros.
+- Finance/Billing: acceso a ledger y facturación (si aplica), sin acceso a conversaciones.
+- Support (interno): acceso controlado y auditado para soporte.
+
+### 6.2 Matriz de permisos por módulo (ejemplo MVP; V1 expande)
+
+Leyenda: R=Read, W=Write, A=Admin
+
+| Módulo | Agent | Assistant | Team Lead | Broker/Admin | Finance | Support |
+|---|---:|---:|---:|---:|---:|---:|
+| Leads Inbox | R/W | R/W (limitado) | R/W (equipo) | R/W/A | - | R (auditado) |
+| CRM/Pipeline | R/W | R/W (limitado) | R/W/A (equipo) | R/W/A | - | R |
+| Contactos | R/W | R/W (limitado) | R/W (equipo) | R/W/A | - | R |
+| Activities/Tasks | R/W | R/W | R/W (equipo) | R/W/A | - | R |
+| Propiedades/Matching | R/W (si aplica) | R (si aplica) | R/W | R/W/A | - | R |
+| Créditos (saldo) | R | - | R | R/W/A | R/W/A | R (auditado) |
+| Créditos (ledger) | R | - | R | R/W/A | R/W/A | R (auditado) |
+| Configuración | R/W (propia) | - | R/W (equipo) | R/W/A | - | - |
+
+Notas:
+- “Support” siempre bajo auditoría (quién, cuándo, por qué se accedió).
+- “Assistant” no puede ver datos financieros, ni exportar leads masivamente (antifuga).
 
 ---
 
-# 9. LIBRERÍAS OSS RECOMENDADAS
+## 7. Arquitectura funcional (mapa de módulos)
 
-## A) Data Grid / Tablas
+### 7.1 Mapa
+- Overview (dashboard operativo): “inbox + tasks + SLA + cambios”.
+- Leads Inbox (mensajería + thread list + contexto + notas).
+- CRM/Pipeline (kanban + lista + etapas + SLA).
+- Contactos (unificación + dedupe + historial).
+- Actividades/Timeline/Tasks (log + tareas + recordatorios).
+- Propiedades/Matching (futuro / parcial).
+- Créditos (saldo + ledger + consumo + disputas).
+- Reportes (V1).
+- Equipo (V1).
+- Settings (perfil, notificaciones, quiet hours, preferencias).
 
-| Librería | GitHub | Licencia | Stars | Última Actividad | TS | A11y | Tailwind | Recomendación |
-|----------|--------|----------|-------|------------------|-----|------|----------|---------------|
-| **TanStack Table** | tanstack/table | MIT | 25k+ | Activo (semanal) | ✅ Nativo | ✅ ARIA patterns | ✅ Headless | ⭐ **RECOMENDADA** |
-| AG Grid (community) | ag-grid/ag-grid | MIT | 12k+ | Activo | ✅ | ✅ | Parcial | Features avanzadas detrás de pago |
-| React Data Grid | adazzle/react-data-grid | MIT | 7k+ | Activo | ✅ | Básica | ❌ | Menos flexible |
-
-**Decisión: TanStack Table v8**
-- Headless (control total de UI)
-- Virtualización via @tanstack/react-virtual
-- Sorting, filtering, pagination, column resizing nativos
-- Costo migración: Bajo (no hay tabla actual)
-
-## B) Charts / Analytics
-
-| Librería | GitHub | Licencia | Stars | TS | Bundle Size | Animaciones | Recomendación |
-|----------|--------|----------|-------|-----|-------------|-------------|---------------|
-| **Recharts** | recharts/recharts | MIT | 23k+ | ✅ | ~100kb | Básicas | ⭐ **RECOMENDADA** |
-| Victory | FormidableLabs/victory | MIT | 11k+ | ✅ | ~150kb | Buenas | Ya lo usan, válido continuar |
-| Tremor | tremorlabs/tremor | Apache-2.0 | 16k+ | ✅ | ~200kb | Buenas | Componentes completos, más opinionado |
-| visx | airbnb/visx | MIT | 19k+ | ✅ | ~50kb (modular) | Limitadas | Low-level, más trabajo |
-
-**Decisión: Continuar con Victory o migrar a Recharts**
-- Victory ya está instalado → mantenerlo minimiza riesgo
-- Si necesitan charts más simples y ligeros → Recharts
-- Costo migración Victory→Recharts: ~2-3 días (reescribir componentes)
-
-## C) Chat UI + Realtime
-
-| Librería | GitHub | Licencia | Stars | TS | Virtualización | Recomendación |
-|----------|--------|----------|-------|-----|----------------|---------------|
-| **react-virtuoso** | petyosi/react-virtuoso | MIT | 5k+ | ✅ | ✅ Excelente | ⭐ **RECOMENDADA** |
-| @chatscope/chat-ui-kit | chatscope/chat-ui-kit-react | MIT | 1.5k+ | ✅ | ❌ | UI completa pero pesada |
-| stream-chat-react | GetStream/stream-chat-react | BSD | 1k+ | ✅ | ✅ | Requiere backend Stream (pago) |
-
-**Decisión: Construir UI custom con react-virtuoso**
-- Virtualización nativa para listas largas de mensajes
-- Control total del diseño
-- Integrar con estado real-time propio
-
-## D) Calendario / Scheduling
-
-| Librería | GitHub | Licencia | Stars | TS | Vistas | Drag & Drop | Recomendación |
-|----------|--------|----------|-------|-----|--------|-------------|---------------|
-| **react-big-calendar** | jquense/react-big-calendar | MIT | 8k+ | ✅ (types) | Mes/Semana/Día/Agenda | ✅ | ⭐ **RECOMENDADA** |
-| FullCalendar | fullcalendar/fullcalendar | MIT | 18k+ | ✅ | Todas | ✅ | Premium features pagas |
-| Schedule-X | schedule-x/schedule-x | MIT | 1k+ | ✅ | Mes/Semana/Día | ✅ | Nuevo, menos maduro |
-| react-day-picker | gpbl/react-day-picker | MIT | 6k+ | ✅ | Solo picker | ❌ | No es calendario completo |
-
-**Decisión: react-big-calendar**
-- Gratis 100%
-- Todas las vistas necesarias
-- Drag & drop para reschedule
-- Customizable con Tailwind
-
-## E) Forms / Validation
-
-| Librería | GitHub | Licencia | Stars | TS | Recomendación |
-|----------|--------|----------|-------|-----|---------------|
-| **react-hook-form** | react-hook-form/react-hook-form | MIT | 42k+ | ✅ | ⭐ **RECOMENDADA** (ya instalado) |
-| **zod** | colinhacks/zod | MIT | 34k+ | ✅ Nativo | ⭐ **RECOMENDADA** (ya instalado) |
-| Formik | jaredpalmer/formik | Apache-2.0 | 34k+ | ✅ | Más verbose |
-| yup | jquense/yup | MIT | 23k+ | ✅ | Alternativa a Zod |
-
-**Decisión: Mantener react-hook-form + zod**
-- Ya instalados en el proyecto
-- Mejor combo DX + performance
-- @hookform/resolvers ya presente
-
-## F) Notificaciones UI
-
-| Librería | GitHub | Licencia | Stars | TS | Acciones | Stacking | Recomendación |
-|----------|--------|----------|-------|-----|----------|----------|---------------|
-| **Sonner** | emilkowalski/sonner | MIT | 9k+ | ✅ | ✅ | ✅ | ⭐ **RECOMENDADA** (ya instalado) |
-| react-hot-toast | timolins/react-hot-toast | MIT | 10k+ | ✅ | Limitadas | ✅ | Más simple |
-| notistack | iamhosseindhv/notistack | MIT | 4k+ | ✅ | ✅ | ✅ | Para MUI |
-
-**Decisión: Mantener Sonner**
-- Ya instalado
-- API excelente
-- Animaciones suaves nativas
-
-**Para Notification Center (no solo toasts):**
-Construir componente custom con:
-- Lista virtualizada (react-virtuoso)
-- Popover (Radix, ya disponible)
-- Estado persistente en backend
-
-## G) Micro-interactions / Motion
-
-| Librería | GitHub | Licencia | Stars | TS | Uso | Recomendación |
-|----------|--------|----------|-------|-----|-----|---------------|
-| **framer-motion** | framer/motion | MIT | 24k+ | ✅ | Animaciones declarativas | ⭐ **MANTENER** |
-| react-spring | pmndrs/react-spring | MIT | 28k+ | ✅ | Physics-based | Alternativa, no migrar |
-| @use-gesture/react | pmndrs/use-gesture | MIT | 9k+ | ✅ | Gestures (drag, pinch) | ✅ Complemento |
-| canvas-confetti | catdad/canvas-confetti | ISC | 10k+ | ✅ (types) | Confetti celebrations | ✅ Para milestones |
-| lottie-react | Gamote/lottie-react | MIT | 800+ | ✅ | Lottie animations | Solo si hay assets Lottie |
-
-**Decisión:**
-- Mantener framer-motion como base
-- Agregar @use-gesture para drag mejorado en kanban
-- Agregar canvas-confetti para celebraciones puntuales
-
-## H) Command Palette + Hotkeys
-
-| Librería | GitHub | Licencia | Stars | TS | Recomendación |
-|----------|--------|----------|-------|-----|---------------|
-| **cmdk** | pacocoursey/cmdk | MIT | 10k+ | ✅ | ⭐ **RECOMENDADA** (ya en shadcn) |
-| kbar | timc1/kbar | MIT | 5k+ | ✅ | Más features, más peso |
-| react-hotkeys-hook | JohannesKlawornn/react-hotkeys-hook | MIT | 2.5k+ | ✅ | ✅ Para atajos globales |
-
-**Decisión:**
-- Usar cmdk (ya disponible via shadcn Command)
-- Agregar react-hotkeys-hook para atajos globales (g+l, g+i, etc.)
-
-## Resumen de Instalaciones Nuevas
-
-```bash
-# Nuevas dependencias
-bun add @tanstack/react-table @tanstack/react-virtual
-bun add react-big-calendar date-fns
-bun add react-virtuoso
-bun add @use-gesture/react
-bun add canvas-confetti
-bun add react-hotkeys-hook
-bun add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
-
-# Types si aplica
-bun add -D @types/react-big-calendar @types/canvas-confetti
-```
+### 7.2 Convención de rutas (objetivo)
+- `/agents/overview`
+- `/agents/inbox`
+- `/agents/pipeline`
+- `/agents/contacts`
+- `/agents/tasks`
+- `/agents/properties` (si aplica)
+- `/agents/credits`
+- `/agents/team` (V1)
+- `/agents/reports` (V1)
+- `/agents/settings`
 
 ---
 
-# 10. PLAN DE IMPLEMENTACIÓN
+## 8. Módulo: Leads Inbox
 
-## Estructura de Carpetas
+### 8.1 Propósito
+Centralizar conversaciones y acciones con leads para responder rápido, mantener contexto y registrar seguimiento (sin depender de herramientas externas).
 
-```
-src/
-├── pages/
-│   └── agents/
-│       ├── index.tsx              # Redirect to /overview
-│       ├── overview.tsx           # Dashboard
-│       ├── leads/
-│       │   ├── index.tsx          # Pipeline + lista
-│       │   └── [id].tsx           # Detalle de lead
-│       ├── inbox/
-│       │   ├── index.tsx          # Lista de conversaciones
-│       │   └── [id].tsx           # Thread de chat
-│       ├── calendar/
-│       │   └── index.tsx          # Calendario
-│       ├── listings/
-│       │   ├── index.tsx          # Grid de listings
-│       │   ├── [id].tsx           # Detalle
-│       │   └── new.tsx            # Wizard crear
-│       ├── credits/
-│       │   └── index.tsx          # Saldo + ledger
-│       ├── team/
-│       │   └── index.tsx          # Miembros + roles
-│       ├── reports/
-│       │   └── index.tsx          # Dashboards
-│       └── settings/
-│           ├── index.tsx          # Overview settings
-│           ├── profile.tsx
-│           ├── notifications.tsx
-│           └── zones.tsx
-│
-├── components/
-│   └── agents/
-│       ├── layout/
-│       │   ├── AgentLayout.tsx    # Layout con sidebar
-│       │   ├── AgentSidebar.tsx
-│       │   ├── AgentTopbar.tsx
-│       │   └── CommandPalette.tsx
-│       ├── leads/
-│       │   ├── LeadPipeline.tsx   # Kanban
-│       │   ├── LeadCard.tsx
-│       │   ├── LeadDetail.tsx
-│       │   ├── LeadTimeline.tsx
-│       │   └── LeadFilters.tsx
-│       ├── inbox/
-│       │   ├── ConversationList.tsx
-│       │   ├── ChatThread.tsx
-│       │   ├── MessageBubble.tsx
-│       │   ├── MessageInput.tsx
-│       │   └── TemplateSelector.tsx
-│       ├── calendar/
-│       │   ├── AgentCalendar.tsx
-│       │   ├── AppointmentForm.tsx
-│       │   └── AppointmentCard.tsx
-│       ├── listings/
-│       │   ├── ListingGrid.tsx
-│       │   ├── ListingCard.tsx
-│       │   ├── ListingDetail.tsx
-│       │   ├── ListingForm.tsx
-│       │   └── ActivityFeed.tsx
-│       ├── credits/
-│       │   ├── BalanceCard.tsx
-│       │   ├── LedgerTable.tsx
-│       │   └── RulesConfig.tsx
-│       ├── team/
-│       │   ├── MemberList.tsx
-│       │   ├── InviteModal.tsx
-│       │   └── RoutingRules.tsx
-│       ├── reports/
-│       │   ├── OverviewDashboard.tsx
-│       │   ├── ResponseTimeChart.tsx
-│       │   └── ConversionFunnel.tsx
-│       ├── notifications/
-│       │   ├── NotificationCenter.tsx
-│       │   ├── NotificationItem.tsx
-│       │   └── NotificationPrefs.tsx
-│       └── shared/
-│           ├── AgentAvatar.tsx
-│           ├── StatusBadge.tsx
-│           ├── EmptyState.tsx
-│           ├── LoadingSkeleton.tsx
-│           └── MicroConfirmation.tsx
-│
-├── lib/
-│   └── agents/
-│       ├── api/
-│       │   ├── leads.ts           # API calls (mock for now)
-│       │   ├── conversations.ts
-│       │   ├── appointments.ts
-│       │   ├── listings.ts
-│       │   └── credits.ts
-│       ├── hooks/
-│       │   ├── useLeads.ts
-│       │   ├── useConversations.ts
-│       │   ├── useAppointments.ts
-│       │   ├── useListings.ts
-│       │   ├── useCredits.ts
-│       │   ├── useNotifications.ts
-│       │   └── useAgent.ts
-│       ├── machines/
-│       │   ├── leadMachine.ts
-│       │   └── appointmentMachine.ts
-│       ├── motion/
-│       │   ├── tokens.ts          # Duration, easing, distance
-│       │   ├── variants.ts        # Common animation variants
-│       │   └── useReducedMotion.ts
-│       ├── utils/
-│       │   ├── formatters.ts
-│       │   └── validators.ts
-│       └── fixtures/
-│           ├── agents.ts
-│           ├── leads.ts
-│           ├── conversations.ts
-│           ├── appointments.ts
-│           └── listings.ts
-│
-├── types/
-│   └── agents.ts                  # Todas las interfaces
-│
-└── test/
-    └── agents/
-        ├── leads.test.ts
-        └── appointments.test.ts
-```
+### 8.2 Alcance
+MVP:
+- Thread list (conversaciones) + filtros + estados.
+- Vista conversación.
+- Acciones: enviar mensaje, crear tarea, cambiar etapa, agregar nota interna.
+- SLA de respuesta inicial y “sin respuesta” visible.
+- Plantillas rápidas.
+- Adjuntos: “por definir” (MVP puede iniciar sin adjuntos).
 
-## Routing con Layout Anidado
+V1:
+- Read receipts (si el canal lo soporta).
+- Asignación a agentes (equipo).
+- Etiquetas y automatizaciones de follow-up.
 
-```typescript
-// src/App.tsx (adiciones)
+### 8.3 UI principal
+1. Vista Inbox (master-detail):
+   - Izquierda: lista virtualizada de threads.
+   - Derecha: conversación seleccionada con panel de contexto.
+2. Panel de contexto (drawer derecho o columna):
+   - Lead summary, etapa, SLA, tareas, datos de contacto.
+3. Composer:
+   - input multiline, shortcuts de plantillas, envío.
+4. Action bar:
+   - Crear tarea, cambiar etapa, marcar “cerrado”, asignar (V1).
 
-import AgentLayout from '@/components/agents/layout/AgentLayout';
+### 8.4 Estados (loading/empty/error)
+- Loading:
+  - Skeleton para lista de threads y conversación.
+  - Estados independientes: se puede cargar lista sin conversación y viceversa.
+- Empty:
+  - Inbox vacío: “No hay conversaciones aún” + CTA “Ver pipeline” o “Importar contactos” (si aplica).
+  - Thread sin mensajes: mostrar “Lead creado, sin mensajes” + CTA “Enviar primer mensaje”.
+- Error:
+  - Error de red: banner no bloqueante arriba + retry.
+  - Error de envío: mensaje queda en estado “failed” con reintentar y editar.
 
-// Dentro de Routes:
-<Route path="/agents" element={<AgentLayout />}>
-  <Route index element={<Navigate to="overview" replace />} />
-  <Route path="overview" element={<AgentOverview />} />
-  <Route path="leads" element={<AgentLeads />} />
-  <Route path="leads/:id" element={<LeadDetail />} />
-  <Route path="inbox" element={<AgentInbox />} />
-  <Route path="inbox/:id" element={<ChatThread />} />
-  <Route path="calendar" element={<AgentCalendar />} />
-  <Route path="listings" element={<AgentListings />} />
-  <Route path="listings/new" element={<ListingWizard />} />
-  <Route path="listings/:id" element={<ListingDetail />} />
-  <Route path="credits" element={<AgentCredits />} />
-  <Route path="team" element={<AgentTeam />} />
-  <Route path="reports" element={<AgentReports />} />
-  <Route path="settings" element={<AgentSettings />} />
-  <Route path="settings/profile" element={<ProfileSettings />} />
-  <Route path="settings/notifications" element={<NotificationSettings />} />
-  <Route path="settings/zones" element={<ZoneSettings />} />
-</Route>
-```
+### 8.5 Reglas y validaciones
+- Thread se crea cuando:
+  - llega un lead con canal “in-app chat” o “mensaje de contacto”.
+  - o cuando el agente inicia conversación desde un lead.
+- Validación de mensaje:
+  - no vacío, longitud máxima (por definir).
+  - sanitización de contenido (prevención XSS en render).
+- Notas internas:
+  - visibles solo para roles con permiso.
+  - no se envían al usuario final.
+- SLA:
+  - “SLA inicial” se mide desde `lead_created_at` a `first_agent_reply_at`.
+  - si `first_agent_reply_at` no existe en X horas (por definir), se marca “SLA vencido”.
+- Cierre de conversación:
+  - “Cerrado” no elimina historial; solo oculta de “activos” por defecto.
+  - Se puede reabrir.
 
-## Guards Placeholder
+### 8.6 Permisos
+- Agent: R/W sobre sus threads.
+- Team Lead/Broker: R sobre equipo; W para reasignar y cerrar en nombre del agente (V1).
+- Assistant: R/W según configuración; sin exportación.
 
-```typescript
-// src/lib/agents/hooks/useAgentAuth.ts
+### 8.7 Eventos de analítica (mínimo)
+- `inbox_thread_list_viewed`
+- `inbox_thread_opened`
+- `message_composed`
+- `message_sent`
+- `message_send_failed`
+- `template_inserted`
+- `note_added`
+- `sla_breached_viewed`
+- `lead_stage_changed_from_inbox`
+- `task_created_from_inbox`
 
-export function useAgentAuth() {
-  // TODO: Implementar con backend real
-  const agent = useMockAgent(); // Fixture
-  
-  return {
-    agent,
-    isAuthenticated: !!agent,
-    isLoading: false,
-    can: (permission: string) => {
-      // Placeholder permission check
-      return true;
-    },
-  };
-}
+### 8.8 Edge cases
+- Duplicado de threads (mismo lead): se resuelve por contacto (email/teléfono) y/o lead_id.
+- Mensajes concurrentes: ordenación estable por timestamp + id.
+- Reintento idempotente: `client_message_id` evita duplicados.
+- Permisos insuficientes: ocultar composer y mostrar “No tienes permiso para responder”.
+- Sesión expirada: bloqueo de composer, preservar borrador local.
 
-// En AgentLayout:
-const { isAuthenticated, isLoading } = useAgentAuth();
-
-if (isLoading) return <LoadingScreen />;
-if (!isAuthenticated) return <Navigate to="/login" />;
-
-return <Outlet />;
-```
-
-## Mock Data + MSW Strategy
-
-```typescript
-// src/lib/agents/fixtures/leads.ts
-
-export const mockLeads: Lead[] = [
-  {
-    id: 'lead-1',
-    firstName: 'María',
-    lastName: 'García',
-    email: 'maria@example.com',
-    phone: '+52 55 1234 5678',
-    stage: 'engaged',
-    score: 75,
-    temperature: 'hot',
-    assignedTo: 'agent-1',
-    source: 'marketplace',
-    interestedIn: 'buy',
-    budgetMin: 200000,
-    budgetMax: 350000,
-    createdAt: new Date('2026-01-25'),
-    updatedAt: new Date('2026-01-28'),
-  },
-  // ... más leads
-];
-
-// Para desarrollo más realista, agregar MSW:
-// src/mocks/handlers.ts
-
-import { http, HttpResponse } from 'msw';
-import { mockLeads } from '@/lib/agents/fixtures/leads';
-
-export const handlers = [
-  http.get('/api/agents/leads', () => {
-    return HttpResponse.json(mockLeads);
-  }),
-  
-  http.patch('/api/agents/leads/:id', async ({ params, request }) => {
-    const { id } = params;
-    const updates = await request.json();
-    // Simular delay
-    await new Promise(r => setTimeout(r, 300));
-    return HttpResponse.json({ ...mockLeads.find(l => l.id === id), ...updates });
-  }),
-];
-```
-
-## Checklist de PR
-
-### Para cada componente:
-
-- [ ] **Empty state**: Diseño claro cuando no hay datos
-- [ ] **Loading state**: Skeleton coherente con layout final
-- [ ] **Error state**: Mensaje de error + acción de retry
-- [ ] **A11y**: 
-  - [ ] Labels en todos los inputs
-  - [ ] ARIA roles donde aplique
-  - [ ] Focus visible
-  - [ ] Color contrast ≥4.5:1
-- [ ] **Keyboard navigation**:
-  - [ ] Tab order lógico
-  - [ ] Enter/Space activan botones
-  - [ ] Escape cierra modals/drawers
-- [ ] **Reduced motion**:
-  - [ ] useReducedMotion hook implementado
-  - [ ] Fallback a transiciones instantáneas
-- [ ] **Testing básico**:
-  - [ ] Render sin crash
-  - [ ] Estados principales renderean correctamente
-  - [ ] Acciones principales disparan callbacks
+### 8.9 Future enhancements
+- Asistente de “next best action” (reglas).
+- Resumen de conversación.
+- Adjuntos y media (con política de tamaño y antivirus; futuro).
+- Integración email/SMS (fuera de alcance MVP, especificación contractual en Integraciones).
 
 ---
 
-# 11. REPORTING + MÉTRICAS + SCORE DEL AGENTE
+## 9. Módulo: CRM / Pipeline
 
-## KPIs Visibles en Dashboard
+### 9.1 Propósito
+Visualizar y operar el flujo de conversión: priorizar leads, moverlos por etapas, evitar olvidos con tareas y SLA.
 
-| Métrica | Definición | Meta sugerida | Cómo mostrar |
-|---------|------------|---------------|--------------|
-| **Tiempo de respuesta** | Mediana de tiempo entre mensaje entrante y primera respuesta | <1 hora | Gauge: verde <1h, amarillo 1-4h, rojo >4h |
-| **Tasa de respuesta** | % de leads con al menos 1 respuesta en <24h | >90% | Porcentaje con trend |
-| **Leads activos** | Leads en stages no-finales | - | Número con breakdown por stage |
-| **Citas esta semana** | Appointments scheduled | - | Número + calendar mini |
-| **Tasa de no-show** | % citas con status no_show | <10% | Porcentaje inverso |
-| **Conversión a cita** | % leads que llegan a appointment_set | - | Funnel chart |
-| **Cierre (won)** | % leads que llegan a closed_won | - | Funnel chart |
-| **Performance por listing** | Views/saves/inquiries por listing | - | Bar chart comparativo |
-| **Performance por zona** | Leads y conversiones por zona | - | Mapa heat o tabla |
+### 9.2 Alcance
+MVP:
+- Kanban por etapas + vista lista.
+- Mover etapa (drag/drop + menú).
+- SLA y “sin próxima acción”.
+- Filtros: etapa, asignado (si aplica), prioridad, fecha de creación.
+- Quick actions: crear tarea, abrir inbox, marcar perdido.
 
-## Agent Health Score
+V1:
+- Reglas de routing (equipo).
+- Campos personalizados (por definir).
+- Automatizaciones (p. ej. crear tarea al entrar a etapa X).
 
-**Objetivo**: Un número 0-100 que refleje la "salud" del agente, calculable y explicable.
+### 9.3 Etapas (MVP, por definir ajustes)
+- Nuevo
+- Contactado
+- Calificado
+- Cita programada
+- Cita realizada
+- Negociación
+- Cerrado (ganado)
+- Cerrado (perdido)
 
-### Componentes del Score
+Reglas:
+- “Cerrado” no borra; requiere razón para “perdido” (catálogo por definir).
+- “Cita programada” requiere al menos 1 cita asociada (si módulo citas está activo en MVP; si no, se crea actividad).
 
-| Factor | Peso | Cálculo |
-|--------|------|---------|
-| **Responsividad** | 30% | 100 - (avg_response_time_hours * 10), min 0 |
-| **Seguimiento** | 25% | % leads con actividad en últimos 7 días |
-| **Conversión** | 25% | (leads_to_appointment / total_leads) * 100 |
-| **Perfil** | 10% | profile_completion (0-100) |
-| **Reviews** | 10% | avg_rating * 20 (si hay reviews) |
+### 9.4 UI principal
+- Kanban:
+  - columnas por etapa con contador.
+  - tarjetas con: nombre, SLA badge, última actividad, próxima tarea, propiedad asociada (si aplica).
+- Vista lista:
+  - tabla con filtros persistentes, orden por SLA y “overdue”.
+- Panel detail (drawer):
+  - resumen + CTA: abrir inbox, crear tarea, cambiar etapa, agregar nota.
 
-### Cómo mostrarlo
+### 9.5 Estados
+- Loading: skeleton por columnas; placeholder de tarjetas.
+- Empty: sin leads: CTA “Cómo obtener leads” (texto neutral) y “Importar” (si existe).
+- Error: fallback con retry; mantener filtros.
 
-```
-┌─────────────────────────────────────────┐
-│ Tu Score de Agente                      │
-│                                         │
-│         ┌─────────────────┐             │
-│         │      78         │             │
-│         │    / 100        │             │
-│         └─────────────────┘             │
-│         [████████░░] Bueno              │
-│                                         │
-│ Desglose:                               │
-│ • Responsividad: 85 ✓                   │
-│ • Seguimiento: 70 ⚠️ Mejorable          │
-│ • Conversión: 75                        │
-│ • Perfil: 90 ✓                          │
-│ • Reviews: 80                           │
-│                                         │
-│ 💡 Consejo: Responde a los 3 leads      │
-│    sin actividad esta semana            │
-│                                         │
-└─────────────────────────────────────────┘
-```
+### 9.6 Reglas y validaciones
+- Mover etapa:
+  - Se registra evento de auditoría.
+  - Se propone “siguiente paso” obligatorio (task) al mover a ciertas etapas (por definir reglas).
+  - Undo disponible 10s para movimientos.
+- Next step:
+  - Lead debe tener `next_task_due_at` o `next_action` (por definir forma) para considerarse “en control”.
+  - Si no, aparece badge “Sin próxima acción”.
+- Prioridad:
+  - Derivada: SLA vencido > nuevo sin respuesta > tarea overdue > resto.
+- Dedupe:
+  - Pipeline se opera sobre Lead, pero Contacto unifica identidad (ver Contactos).
 
-### Evitar frustración
+### 9.7 Permisos
+- Agent: R/W sobre leads propios.
+- Team Lead: R/W sobre leads del equipo; reasignar (V1).
+- Broker: A para config de etapas y razones (V1).
 
-- **No mostrar score en rojo nunca**: Usar colores neutros para scores bajos
-- **Siempre dar una acción concreta**: "Haz X para subir Y puntos"
-- **Trend positivo**: Mostrar "↑5 vs mes pasado" cuando mejora
-- **Ocultar si no hay datos**: "Necesitas más actividad para calcular tu score"
+### 9.8 Analítica
+- `pipeline_viewed` (kanban/list)
+- `lead_card_opened`
+- `lead_stage_drag_started`
+- `lead_stage_changed`
+- `lead_stage_change_undone`
+- `filter_applied`
+- `sort_changed`
+- `task_created_from_pipeline`
+- `lead_marked_lost` (con reason)
+
+### 9.9 Edge cases
+- Drag/drop en móvil: fallback a menú “Cambiar etapa”.
+- Concurrencia (dos usuarios cambian etapa): resolución por “last write wins” + aviso.
+- Lead sin contacto: mostrar “Contacto incompleto” y CTA para completar.
+
+### 9.10 Future enhancements
+- SLA por etapa (no solo inicial).
+- Predicción de probabilidad de cierre (futuro).
+- Playbooks por etapa.
 
 ---
 
-# 12. RIESGOS Y DECISIONES ABIERTAS
+## 10. Módulo: Contactos (unificación + dedupe)
 
-## Riesgos Técnicos
+### 10.1 Propósito
+Mantener identidad única de personas/organizaciones para evitar duplicados y preservar historial.
+
+### 10.2 Alcance
+MVP:
+- Contacto unificado (vista perfil).
+- Sugerencias de duplicado.
+- Merge manual asistido.
+- Vincular múltiples leads al mismo contacto.
+
+V1:
+- Matching probabilístico (fuzzy).
+- Organizaciones (empresa) y relaciones (familia).
+
+### 10.3 UI principal
+- Lista de contactos (tabla).
+- Vista contacto (perfil) con:
+  - información básica.
+  - timeline unificado (mensajes, actividades, cambios).
+  - leads asociados.
+  - propiedades asociadas (futuro).
+
+### 10.4 Reglas de deduplicación (MVP)
+- Exact match:
+  - email igual (case-insensitive) o teléfono normalizado igual.
+- Sugerencia (no auto-merge):
+  - nombre similar + mismo dominio email o prefijo de teléfono.
+- Merge:
+  - conserva historial completo.
+  - selecciona “registro maestro” para campos conflictivos.
+  - genera `merge_audit_event`.
+
+### 10.5 Validaciones
+- Teléfono: normalización E.164 (por definir implementación).
+- Email: validación formato.
+- Campos sensibles: notas internas visibles por permisos.
+
+### 10.6 Permisos
+- Agent: ver/editar propios; merge solo si rol habilitado.
+- Team Lead/Broker: merge a nivel equipo.
+
+### 10.7 Analítica
+- `contacts_list_viewed`
+- `contact_opened`
+- `dedupe_suggestion_shown`
+- `contact_merge_started`
+- `contact_merged`
+- `contact_merge_canceled`
+
+### 10.8 Edge cases
+- Merge de contactos con threads diferentes: threads se re-asocian al contacto maestro.
+- Conflicto de propietarios (owner_id): requiere regla (V1: bloquear o reasignar explícitamente).
+
+### 10.9 Future enhancements
+- Importaciones (CSV), enriquecimiento (no scope MVP).
+- Segmentación y tags avanzados.
+
+---
+
+## 11. Módulo: Actividades + Timeline + Tasks
+
+### 11.1 Propósito
+Estandarizar seguimiento: todo lo que sucede queda registrado, y las tareas guían la ejecución diaria.
+
+### 11.2 Alcance
+MVP:
+- Timeline por lead/contacto.
+- Tasks: crear, completar, posponer, prioridad, due date.
+- Recordatorios in-app (notification center).
+- Actividades manuales: llamada, visita, nota.
+
+V1:
+- Tasks recurrentes.
+- Integración calendario externo (por definir).
+- Automatizaciones de tasks.
+
+### 11.3 UI principal
+- “Hoy” (overview): tareas hoy + overdue + citas hoy (si aplica).
+- Lista de tareas (tabla + filtros).
+- Timeline:
+  - feed agrupado por fecha, con iconos por tipo.
+  - expand/collapse para notas largas.
+
+### 11.4 Estados
+- Loading: skeleton feed.
+- Empty: “Sin tareas” + CTA “Crear tarea” y “Ver pipeline”.
+- Error: retry y fallback local.
+
+### 11.5 Reglas
+- Task:
+  - campos mínimos: `title`, `due_at`, `status`, `priority`, `related_entity`.
+  - completado registra `task_completed_at`.
+- Posponer:
+  - requiere nueva fecha, registra razón opcional.
+- SLA:
+  - tasks overdue resaltadas y priorizadas en overview.
+- Actividad:
+  - cada cambio de etapa crea actividad automática.
+  - cada mensaje enviado/recibido crea actividad.
+
+### 11.6 Permisos
+- Assistant: puede crear y completar tasks asignadas; no edita ledger.
+- Team lead: ver tasks del equipo (V1).
+
+### 11.7 Analítica
+- `tasks_viewed`
+- `task_created`
+- `task_completed`
+- `task_snoozed`
+- `timeline_viewed`
+- `activity_added`
+
+### 11.8 Edge cases
+- Tasks en zona horaria: almacenar en UTC, mostrar en tz del usuario.
+- Overdue masivo: UI debe soportar listas grandes (virtualización).
+
+### 11.9 Future enhancements
+- Templates de playbooks por etapa.
+- Notificaciones push/email (configurable).
+
+---
+
+## 12. Módulo: Propiedades / Matching
+
+### Estado: Parcial (MVP) / Futuro
+No hay evidencia de que el portal de agentes ya gestione listings propios. El marketplace actual ya tiene entidades de propiedad y páginas de detalle. Este módulo define cómo se integraría al portal.
+
+### 12.1 Propósito
+Permitir al agente relacionar leads con propiedades, registrar interés, y (futuro) administrar publicaciones/actividad.
+
+### 12.2 Alcance (propuesto)
+MVP (mínimo):
+- Mostrar “propiedad de interés” si el lead proviene de una propiedad específica.
+- Link a PDP existente.
+- Guardar “propiedades sugeridas” para un lead (lista).
+
+V1:
+- Listado de propiedades del agente.
+- Estados (publicada, borrador, pendiente verificación).
+- Actividad por propiedad (vistas/guardados/mensajes) si el backend lo emite.
+
+### 12.3 UI
+- Dentro de lead: panel “Propiedades” con:
+  - propiedad consultada.
+  - sugeridas/guardadas.
+  - CTA “Enviar por mensaje” (envía link).
+- Vista `/agents/properties` (V1): tabla de listings con filtros.
+
+### 12.4 Reglas
+- Relación lead ↔ propiedad: many-to-many.
+- “Enviado” registra actividad.
+
+### 12.5 Analítica
+- `lead_property_link_clicked`
+- `property_suggested_to_lead`
+- `property_sent_in_message`
+
+### 12.6 Decisiones pendientes
+- Fuente de verdad de listings del agente (backend por definir).
+- Definición de “actividad de propiedad” y su granularidad.
+
+---
+
+## 13. Sistema de Créditos
+
+### 13.1 Propósito
+Monetizar capacidades (boost, verificación, featured) con un sistema transparente, auditado e idempotente.
+
+### 13.2 Conceptos
+- Saldo: créditos disponibles (integer).
+- Ledger: registro inmutable de transacciones (append-only).
+- Producto de consumo: acción que consume créditos (p. ej. “verificación de propiedad”, “boost 7 días”).
+- Reservas (hold): retener créditos temporalmente para ejecución posterior (opcional; V1).
+
+### 13.3 Principios de diseño
+1. Ledger es fuente de verdad: saldo se deriva (o se reconcilia) desde ledger.
+2. Idempotencia: cada operación de consumo debe ser re-ejecutable sin duplicar cobros.
+3. Transparencia UX: siempre mostrar “por qué se cobró” y “qué recibí”.
+4. Antifraude: límites por ventana, señales de abuso, y revisiones.
+
+### 13.4 Alcance MVP
+- Vista créditos:
+  - saldo actual.
+  - ledger con filtros por tipo (recarga, consumo, ajuste, reverso).
+- Consumo:
+  - al menos 2 productos configurables por catálogo (por definir).
+- Disputas:
+  - mecanismo UI “Reportar problema” que crea ticket (interno) sin borrar tx.
+
+### 13.5 Reglas y validaciones
+
+#### 13.5.1 Tipos de transacción (ledger)
+| Tipo | Signo | Ejemplo | Reversible | Nota |
+|---|---:|---|---|---|
+| `top_up` | + | Recarga manual / promo | Sí (ajuste) | Requiere comprobante si aplica |
+| `consume` | - | Boost listing | Depende | Se revierte solo si no se ejecutó el producto |
+| `refund` | + | Reembolso consumo | Sí | Debe apuntar a tx original |
+| `adjustment` | +/- | Corrección | Sí | Requiere reason y actor |
+| `expiration` | - | Vencimiento | No | Si hay expiración por política |
+
+#### 13.5.2 Idempotencia
+- Cada operación expone `idempotency_key` único por:
+  - `actor_id + product_id + target_id + timestamp_bucket` (por definir)
+- Si se reintenta con misma key, el backend retorna la tx existente.
+- UI debe soportar retry sin duplicar.
+
+#### 13.5.3 Antifraude (MVP)
+- Límite de consumo por minuto (rate limit de acciones de crédito) — Por definir.
+- Detección de “clics repetidos”: UI deshabilita CTA tras submit y muestra estado.
+- Auditoría:
+  - toda tx tiene `created_by_role`, `created_by_id`, `origin` (ui/api/admin).
+
+#### 13.5.4 UX de errores
+- Saldo insuficiente:
+  - mensaje inline + CTA “Recargar” (si aplica) o “Contactar soporte”.
+- Error de red:
+  - tx queda “pendiente” en UI con reconciliación al refrescar.
+- Conflicto:
+  - “Tu saldo cambió” y recarga datos.
+
+### 13.6 UI de Créditos (pantallas)
+1. `/agents/credits`:
+   - Card de saldo.
+   - Tabla ledger (virtualizada) con filtros: rango fecha, tipo, producto, target.
+   - Drawer de detalle tx:
+     - id, fecha, producto, target, motivo, actor.
+2. Surface de consumo:
+   - Desde propiedades (V1) o desde acciones del portal:
+     - botón “Verificar” o “Boost”.
+   - Preconfirmación:
+     - costo, duración, reglas, link a política.
+   - Confirmación + undo si aplica.
+
+### 13.7 Ejemplos de transacciones y escenarios
+
+#### Escenario A: Consumir créditos para verificación
+- Precondición: saldo >= costo_verificación
+- Acción: agente pulsa “Solicitar verificación”
+- Resultado:
+  - Ledger: `consume -X` con `product=verification`, `target=property_id`
+  - Estado de producto: “pendiente verificación” (si existe en backend)
+- Undo:
+  - permitido solo si backend no procesó la solicitud (por definir criterio).
+
+#### Escenario B: Doble click / retry
+- UI envía consume con `idempotency_key`.
+- Backend responde 500 en primer intento, UI reintenta.
+- Resultado esperado: una sola tx `consume`.
+
+#### Escenario C: Saldo insuficiente
+- UI muestra “Saldo insuficiente”.
+- No se crea tx.
+- Se registra evento `credit_insufficient_shown`.
+
+#### Escenario D: Ajuste admin por disputa
+- Admin crea `adjustment +X` con `reason=dispute_refund`.
+- UI refleja en ledger con actor “Admin”.
+
+### 13.8 Analítica
+- `credits_page_viewed`
+- `credit_ledger_filtered`
+- `credit_product_cta_clicked`
+- `credit_purchase_initiated` (si existe recarga)
+- `credit_consumption_confirmed`
+- `credit_consumption_failed`
+- `credit_insufficient_shown`
+- `credit_tx_detail_opened`
+- `credit_dispute_started`
+
+### 13.9 Future enhancements
+- Reservas/holds para acciones asincrónicas.
+- Suscripción (plan) con crédito mensual.
+- Expiración y políticas de promo.
+
+---
+
+## 14. Flujos E2E críticos
+
+Cada flujo incluye precondiciones, pasos, estados, errores y eventos.
+
+### Flujo 1: Onboarding agente (activación)
+Precondiciones:
+- Usuario autenticado como agente (mecanismo de auth por definir).
+Pasos:
+1. Crear perfil mínimo (nombre, teléfono, zonas de atención).
+2. Configurar notificaciones y quiet hours.
+3. Definir objetivo (compra/renta/venta) y especialidades.
+Estados:
+- loading de guardado, autosave, confirmación.
+Errores:
+- validación teléfono/email; sesión expirada.
+Eventos:
+- `agent_onboarding_started`, `agent_profile_saved`, `quiet_hours_set`, `onboarding_completed`.
+
+### Flujo 2: Lead entrante → primera respuesta (SLA)
+Precondiciones:
+- Lead creado en backend y visible en portal.
+Pasos:
+1. Inbox muestra badge “Nuevo” + SLA countdown.
+2. Agente abre thread.
+3. Redacta y envía primer mensaje (optimistic).
+4. Sistema marca `first_agent_reply_at`.
+Estados:
+- sending, sent, failed->retry.
+Errores:
+- envío fallido; permisos insuficientes.
+Eventos:
+- `lead_received`, `inbox_thread_opened`, `message_sent`, `sla_first_reply_met`.
+
+### Flujo 3: Conversación → crear tarea de follow-up
+Precondiciones:
+- Thread activo.
+Pasos:
+1. Agente agrega nota interna.
+2. Crea task “Llamar mañana 10am”.
+3. Task aparece en overview “Hoy” cuando corresponde.
+Errores:
+- due date inválida.
+Eventos:
+- `note_added`, `task_created_from_inbox`, `task_due_today_shown`.
+
+### Flujo 4: Pipeline drag/drop → undo
+Precondiciones:
+- Lead en etapa “Nuevo”.
+Pasos:
+1. Agente arrastra tarjeta a “Contactado”.
+2. UI aplica cambio (optimistic) y muestra toast con Undo 10s.
+3. Si Undo, vuelve a etapa anterior y registra evento.
+Errores:
+- conflicto de concurrencia.
+Eventos:
+- `lead_stage_changed`, `lead_stage_change_undone`.
+
+### Flujo 5: Dedupe → merge contactos
+Precondiciones:
+- Dos contactos con mismo email/teléfono.
+Pasos:
+1. Sistema muestra sugerencia.
+2. Usuario inicia merge y elige campos del maestro.
+3. Confirma; historial se combina.
+Errores:
+- conflicto de owner; permisos insuficientes.
+Eventos:
+- `dedupe_suggestion_shown`, `contact_merge_started`, `contact_merged`.
+
+### Flujo 6: Consumir créditos para producto (verificación/boost)
+Precondiciones:
+- Catálogo de productos disponible; saldo suficiente.
+Pasos:
+1. Usuario hace CTA “Verificar”.
+2. Modal muestra costo y condiciones.
+3. Confirmar → consume idempotente.
+4. UI refleja en ledger y estado del target.
+Errores:
+- saldo insuficiente; error transaccional.
+Eventos:
+- `credit_product_cta_clicked`, `credit_consumption_confirmed`, `credit_tx_created`.
+
+### Flujo 7 (V1): Reasignación de lead (equipo)
+Precondiciones:
+- Team lead con permiso; lead asignado.
+Pasos:
+1. Abrir lead detail.
+2. Cambiar asignado.
+3. Notificar al nuevo agente.
+Errores:
+- permisos; lead bloqueado.
+Eventos:
+- `lead_reassigned`, `notification_sent`.
+
+---
+
+## 15. UI/UX: Information Architecture + Navegación
+
+### 15.1 Sitemap (objetivo)
+- `/agents/overview`
+- `/agents/inbox`
+- `/agents/pipeline`
+- `/agents/contacts`
+- `/agents/tasks`
+- `/agents/credits`
+- `/agents/settings`
+- (V1) `/agents/team`, `/agents/reports`, `/agents/properties`
+
+### 15.2 Patrones de layout
+- Master-detail (inbox, contacts) en desktop.
+- Drawer para detalle rápido (lead, task).
+- En mobile: navegación por tabs/stack (list → detail) con back.
+
+### 15.3 Command palette
+- Atajos:
+  - `Ctrl/Cmd+K` abre palette.
+  - Acciones: buscar lead, crear tarea, ir a inbox.
+- Accesibilidad: focus trap y navegación teclado.
+
+### 15.4 Navegación principal
+- Sidebar con módulos.
+- Topbar con búsqueda global, notificaciones, perfil.
+
+### 15.5 Navegación secundaria
+- Tabs internos en detalle de lead: Resumen, Mensajes, Actividades, Tareas, Propiedades.
+
+---
+
+## 16. Diseño de componentes (Design System operacional)
+
+### 16.1 Primitives existentes (evidencia)
+- shadcn-ui + Radix (`components.json`).
+- Tailwind tokens vía CSS variables.
+- Animaciones base definidas en Tailwind config.
+
+### 16.2 Componentes operacionales requeridos
+- DataTable (virtualizada) con:
+  - selección, filtros, columnas configurables.
+- Kanban:
+  - columnas, drag/drop, contador, empty column.
+- ThreadList:
+  - item con avatar, snippet, badges.
+- MessageBubble:
+  - estados (sending/sent/failed), timestamp, reintento.
+- SLA Badge:
+  - normal/por vencer/vencido.
+- CreditBalanceCard + LedgerTable.
+- NotificationCenter (drawer).
+- EntityDrawer (lead/contact/task).
+
+### 16.3 Convenciones de iconografía/estados
+- Iconos: `lucide-react` (evidencia).
+- Estados:
+  - Éxito: verde/emerald.
+  - Advertencia: champagne (si se usa como acento).
+  - Error: destructive.
+- Debe definirse mapping exacto en tokens (Por definir en `src/index.css`).
+
+---
+
+## 17. Microinteracciones (mínimo 30)
+
+Formato: Interacción | Trigger | Feedback | Motion (duración/easing) | Undo/Confirmación
+
+1. Hover de item inbox | hover | elevación + highlight | 120ms ease-out | n/a  
+2. Nuevo mensaje entrante | websocket/event | highlight 1.2s + badge | 180ms + fade | n/a  
+3. Envío mensaje (optimistic) | click send | bubble aparece “sending” | 120ms | reintentar  
+4. Envío confirmado | ack | icono check | 120ms | n/a  
+5. Envío fallido | timeout/error | estado “failed” + CTA retry | 160ms shake suave | retry  
+6. Insertar plantilla | shortcut | inserta + tooltip “Plantilla aplicada” | 120ms | undo (ctrl+z en input)  
+7. Crear tarea desde inbox | CTA | toast “Tarea creada” | 180ms | undo 10s (elimina task)  
+8. Cambiar etapa desde inbox | selector | badge cambia + toast | 180ms | undo 10s  
+9. Drag start kanban | drag | tarjeta escala 1.02 + sombra | 120ms | n/a  
+10. Drop kanban | drop | snap + conf. toast | 180ms | undo 10s  
+11. Columna vacía | sin items | empty state con CTA | fade-in 220ms | n/a  
+12. Filtro aplicado | chip click | chip activo + contador | 120ms | clear  
+13. Persistir filtros | navegación | “Filtros guardados” sutil | none (texto) | n/a  
+14. Tabla loading | fetch | skeleton rows | shimmer 800ms | n/a  
+15. Infinite scroll | near end | loader inline | 120ms | n/a  
+16. Dedupe suggestion | detect | banner no bloqueante | slide 220ms | dismiss  
+17. Merge preview | abrir | diff resaltado | 180ms | cancelar  
+18. Merge confirm | confirmar | toast + audit | 180ms | undo no (solo admin ajuste)  
+19. Task complete | click | check + tachado | 140ms | undo 10s  
+20. Task snooze | click | fecha cambia + toast | 140ms | undo 10s  
+21. SLA por vencer | timer | badge cambia color | 120ms | n/a  
+22. SLA vencido | timer | badge + orden prioritario | 120ms | n/a  
+23. Notification drawer | click bell | drawer slide | 220ms | close  
+24. Mark notif read | click | fade out item | 140ms | undo 10s  
+25. Credit CTA click | click | modal open | 180ms scale-in | cancelar  
+26. Credit confirm | confirmar | botón loading + success | 180ms | si aplica undo condicionado  
+27. Credit insufficient | saldo < costo | inline error + CTA | 140ms | n/a  
+28. Ledger row expand | click | drawer detail | 220ms | close  
+29. Autosave indicator | input blur | “Guardado” sutil | 120ms | n/a  
+30. Error global banner | fetch fail | banner slide | 220ms | retry  
+31. Session expired | 401 | modal + redirect | 220ms | reauth  
+32. Reduced motion | prefers-reduced-motion | deshabilitar parallax/drag anim excesiva | n/a | n/a  
+33. Keyboard nav list | arrow keys | focus ring visible | none | n/a  
+34. Command palette open | Cmd+K | overlay + list | 180ms | esc close  
+35. Clipboard copy | click | tooltip “Copiado” | 120ms | n/a  
+
+Tokens recomendados (para implementación):
+- Duraciones: 120/140/180/220/320ms.
+- Easing: `cubic-bezier(0.2, 0.0, 0.0, 1.0)` para entradas; `cubic-bezier(0.4, 0.0, 0.2, 1.0)` para salidas.
+- Distancia: 6–12px en slide.
+- `prefers-reduced-motion`: reducir a fades simples o sin animación.
+
+---
+
+## 18. Estados del sistema (globales)
+
+1. Offline:
+   - banner “Sin conexión”, cola local de acciones críticas (por definir).
+2. Maintenance:
+   - página bloqueante con estado y reintento.
+3. Permisos insuficientes (403):
+   - UI oculta CTA + mensaje “No autorizado”.
+4. Rate limit (429):
+   - banner + backoff; deshabilitar CTA temporal.
+5. Sesión expirada (401):
+   - modal y redirect a login; preserva borradores localmente.
+6. Error 5xx:
+   - fallback con retry; logging.
+
+---
+
+## 19. Datos y entidades (modelo conceptual)
+
+### 19.1 Entidades (mínimo)
+- Agent
+- Team / Agency
+- Role / Permission
+- Lead
+- Contact
+- Conversation
+- Message
+- Task
+- ActivityEvent
+- Appointment (si se habilita en MVP o V1)
+- CreditAccount
+- CreditLedgerEntry
+- Notification
+- AuditLog
+
+### 19.2 Campos mínimos (ejemplo conceptual)
+| Entidad | Campos mínimos |
+|---|---|
+| Lead | id, contact_id?, source, stage, owner_id, created_at, first_reply_at?, last_activity_at, next_task_due_at? |
+| Contact | id, name?, phone?, email?, normalized_phone?, normalized_email?, created_at |
+| Conversation | id, lead_id, status(open/closed), last_message_at |
+| Message | id, conversation_id, direction(in/out), body, status(sending/sent/failed), created_at, client_message_id? |
+| Task | id, title, due_at, status, priority, related_type, related_id, assigned_to |
+| CreditLedgerEntry | id, account_id, type, amount, product_id?, target_id?, idempotency_key, created_at, created_by |
+| AuditLog | id, actor, action, entity_type, entity_id, before/after, created_at |
+
+### 19.3 Reglas de dedupe
+- Email/teléfono normalizados como claves.
+- Merge no destructivo (append-only para audit).
+
+---
+
+## 20. Integraciones (presentes/futuras) + estrategia
+
+### Presentes (evidencia)
+- TanStack Query como capa de data fetching.
+- Toast/tooltip providers.
+- Lovable tagger en dev.
+
+### Futuras (por definir)
+- Notificaciones push (web/app).
+- Email/SMS (servicio externo; especificación contractual).
+- Calendario externo (Google/Microsoft).
+- Exportación CSV (con permisos y auditoría).
+- Integración con módulo de propiedades del marketplace (actividad).
+
+Estrategia:
+- Definir contratos de API (REST o similar) por módulo, sin acoplar a proveedor de infra.
+- Todo evento sensible pasa por auditoría.
+
+---
+
+## 21. Analítica y observabilidad
+
+### 21.1 Taxonomía de eventos (tabla base)
+| Evento | Cuándo | Props mínimas | PII | Dashboard |
+|---|---|---|---|---|
+| lead_received | lead creado | lead_id, source, agent_id | no | Inflow |
+| inbox_thread_opened | abrir thread | thread_id, lead_id | no | Engagement |
+| message_sent | enviar msg | thread_id, message_id, channel | body no | SLA |
+| lead_stage_changed | cambia etapa | lead_id, from, to | no | Funnel |
+| task_created | crea task | task_id, related | no | Productivity |
+| credit_consumed | consume | ledger_id, product, amount | no | Monetización |
+| credit_insufficient_shown | saldo insuf | product, balance | no | Monetización |
+| contact_merged | merge | master_id, merged_id | no | Data quality |
+| error_shown | error UI | code, module | no | Reliability |
+
+Notas:
+- No registrar contenido de mensajes (PII). Solo metadata.
+- IDs deben ser internos; emails/teléfonos jamás como props.
+
+### 21.2 Observabilidad técnica (por definir)
+- Logs estructurados.
+- Tracing de requests.
+- Dashboards: errores por módulo, latencia, ratio retries.
+
+---
+
+## 22. Seguridad, privacidad y auditoría
+
+1. PII:
+   - Mensajes, teléfonos, emails: cifrado en tránsito.
+   - Políticas de retención (por definir).
+2. RBAC:
+   - enforcement backend + UI.
+3. Auditoría:
+   - acciones sensibles: merge, reasignación, ajustes de crédito, exportación.
+4. Prevención de fuga:
+   - limitar exportaciones; watermarks (futuro).
+5. Seguridad de sesión:
+   - expiración, refresh, CSRF (por definir).
+6. Acceso soporte:
+   - “break-glass” con reason obligatorio y registro.
+
+---
+
+## 23. Performance y escalabilidad
+
+1. Listas grandes:
+   - virtualización en inbox, contactos, ledger.
+2. Caching:
+   - TanStack Query con invalidaciones por entidad.
+3. Optimistic updates:
+   - inbox, pipeline, tasks, créditos (con reconciliación).
+4. Rendering:
+   - evitar re-render masivo; memoización por row.
+5. Tipos TS:
+   - estado actual no estricto en app; riesgo de nulls (ver TODO).
+6. Motion:
+   - 60fps; evitar layout thrash; prefer transforms.
+
+---
+
+## 24. Riesgos y mitigaciones
 
 | Riesgo | Impacto | Mitigación |
-|--------|---------|------------|
-| **PII en chats** | Alto (legal, GDPR) | Encriptación E2E, políticas de retención, no loggear contenido |
-| **Spam/fraude leads** | Medio | Rate limiting, verificación teléfono, honeypots |
-| **Suplantación agente** | Alto | Verificación de licencia obligatoria, badges verificados |
-| **Performance front con muchos leads** | Medio | Virtualización, paginación, lazy loading |
-| **Sincronización real-time** | Medio | Optimistic updates + reconciliación, WebSockets con fallback polling |
-| **Offline support** | Bajo (MVP) | Diferir a V2, solo mostrar estado offline |
-
-## Riesgos de UX
-
-| Riesgo | Impacto | Mitigación |
-|--------|---------|------------|
-| **Notification fatigue** | Alto | Controles granulares, quiet hours, límites diarios |
-| **Score frustrante** | Medio | Siempre positivo, acciones claras, no rankings públicos |
-| **Onboarding largo** | Medio | Progressive disclosure, guardar progreso, skip opcional |
-| **Mobile constraints** | Medio | Diseño mobile-first en componentes críticos (inbox, calendar) |
-
-## Decisiones Abiertas
-
-| Decisión | Opciones | Recomendación | Deadline |
-|----------|----------|---------------|----------|
-| **Charts: Victory vs Recharts** | Mantener Victory / Migrar | Mantener Victory (ya instalado) | Antes de MVP |
-| **Real-time: WebSockets vs Polling** | WS nativo / Socket.io / Supabase Realtime | Depende de backend elegido | Pre-backend |
-| **i18n desde MVP** | Sí / No | No en MVP, preparar estructura | V1 |
-| **State management global** | Zustand / Jotai / React Query only | React Query + Zustand para UI state | Semana 1 |
-| **Testing strategy** | Unit + Integration / E2E | Unit + Integration MVP, E2E en V1 | Semana 1 |
-
-## Seguridad UX
-
-- **Report/Block usuario**: Implementar desde MVP, visible pero no invasivo
-- **Audit log**: Loggear todas las acciones sensibles (cambios de stage, mensajes, assignments)
-- **Verificación 2FA**: Opcional MVP, obligatoria para admins en V1
+|---|---|---|
+| Confusión por duplicados | historial inconsistente | dedupe + merge + audit |
+| Abuso de créditos | pérdida financiera/confianza | idempotencia + rate limit + auditoría |
+| Baja adopción | sin retención | overview “qué cambió” + tareas + SLA |
+| Performance en tablas | frustración | virtualización + caching |
+| Permisos mal definidos | fuga de datos | RBAC matriz + pruebas + auditoría |
+| TS no estricto | bugs silenciosos | plan gradual de endurecimiento |
 
 ---
 
-# SIGUIENTE PASO RECOMENDADO (MAÑANA)
+## 25. Supuestos y decisiones pendientes (TODO priorizado)
 
-## Día 1: Foundation (8 horas)
+### P0 (bloqueantes MVP)
+1. Definir auth y rol inicial de agente (mecanismo y claims).
+2. Definir catálogo de productos de crédito MVP (al menos 2) y costos.
+3. Definir SLA objetivo (X horas) y cómo se configura.
+4. Definir contrato de API mínimo por módulo (endpoints y modelos).
+5. Definir storage de borradores y manejo de sesión expirada.
 
-1. **Instalar dependencias** (30 min)
-   ```bash
-   bun add @tanstack/react-table @tanstack/react-virtual react-big-calendar @dnd-kit/core @dnd-kit/sortable @use-gesture/react canvas-confetti react-hotkeys-hook xstate @xstate/react date-fns
-   bun add -D @types/react-big-calendar
-   ```
+### P1 (post-MVP)
+1. Definir estrategia de calendario/citas (entidad Appointment vs activity).
+2. Definir routing de equipo (V1) y reasignación.
+3. Definir exportaciones y políticas de acceso.
+4. Definir targets de KPIs y dashboards.
 
-2. **Crear estructura de carpetas** (15 min)
-   - Crear todos los directorios según plan
-
-3. **Implementar types/agents.ts** (1 hora)
-   - Copiar interfaces del Data Model
-
-4. **Implementar motion tokens + variants** (1 hora)
-   - src/lib/agents/motion/tokens.ts
-   - src/lib/agents/motion/variants.ts
-
-5. **AgentLayout + Sidebar + Topbar** (3 horas)
-   - Layout responsive
-   - Navegación funcional
-   - Command palette básico
-
-6. **Fixtures de datos mock** (1.5 horas)
-   - leads, conversations, appointments, listings
-
-7. **Routing completo con guards placeholder** (1 hora)
-   - Todas las rutas definidas
-   - Páginas placeholder
-
-## Día 2: Core Components (8 horas)
-
-1. **LeadPipeline (Kanban)** con dnd-kit (4 horas)
-   - Drag & drop entre stages
-   - Optimistic updates
-   - Micro-feedback (confetti sutil al cerrar won)
-
-2. **ConversationList + ChatThread básico** (4 horas)
-   - Lista virtualizada
-   - Mensajes con estados
-   - Input con templates
-
-## Día 3: Calendar + Listings + Polish (8 horas)
-
-1. **AgentCalendar** con react-big-calendar (3 horas)
-   - Vistas semana/mes
-   - Crear/ver citas
-
-2. **ListingGrid + ListingCard** (2 horas)
-   - Grid responsive
-   - Estados y badges
-
-3. **NotificationCenter** (1.5 horas)
-   - Popover con lista
-   - Mark as read
-
-4. **Testing básico + A11y check** (1.5 horas)
-   - Smoke tests
-   - Keyboard nav
-   - Screen reader basics
+### P2 (futuro)
+1. Integraciones email/SMS/push.
+2. Actividad de propiedades (views/saves) y su evento.
+3. Campos personalizados y automatizaciones.
 
 ---
 
-**Confirmado vs Hipótesis aplicado a este documento:**
+## 26. Glosario + Convenciones terminológicas
 
-| Sección | Status |
-|---------|--------|
-| Zillow features core | ✅ Confirmado (docs públicos) |
-| Zillow gamification | ❓ Hipótesis (no encontrado) |
-| OSS libraries | ✅ Confirmado (GitHub, npm) |
-| Motion tokens | ✅ Best practices (framer-motion docs) |
-| Data model | ✅ Diseño propio (basado en patterns CRM) |
-| State machines | ✅ Diseño propio (basado en workflows reales) |
-| Agent Score | ❓ Propuesta (validar con usuarios) |
-| Retention triggers | ✅ Basado en literatura de habit loops |
+### 26.1 Naming conventions (obligatorias)
+- Lead: entidad operativa en pipeline (oportunidad en curso).
+- Contacto: identidad unificada (persona) que puede tener múltiples leads.
+- Conversación/Thread: canal de mensajes asociado a un lead.
+- Mensaje: unidad de comunicación (in/out) dentro de conversación.
+- Actividad: evento de negocio (mensaje, llamada, cambio etapa).
+- Tarea (Task): acción futura con due date.
+- Cita/Visita (Appointment): evento calendarizable (V1 si aplica).
+- Crédito: unidad de valor para consumir productos.
+- Ledger: registro inmutable de transacciones de crédito.
+- Audit log: registro de acciones sensibles con before/after.
+
+### 26.2 Estados estándar
+- Loading / Empty / Error (por vista)
+- Sending / Sent / Failed (mensajes)
+- Open / Closed (conversaciones)
+- Active / Snoozed / Done (tasks)
+
+### 26.3 Glosario breve
+- SLA: acuerdo de tiempo máximo para responder o actuar.
+- Idempotencia: repetir la misma operación no debe duplicar efectos.
+- Virtualización: renderizar solo filas visibles para performance.
+- Optimistic UI: actualizar interfaz antes de confirmación, con reconciliación.
 
 ---
-
-*Documento generado: 2026-01-29*
-*Autor: Product Lead + Staff Frontend Engineer*
-*Branch: Feature-Page-DashboardAgents-28-01-2026*
+Fin del documento canónico.

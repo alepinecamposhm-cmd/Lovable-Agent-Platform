@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  DndContext, 
+import {
+  DndContext,
   DragOverlay,
-  closestCorners,
   KeyboardSensor,
   PointerSensor,
+  closestCorners,
+  useDroppable,
   useSensor,
   useSensors,
   DragStartEvent,
@@ -18,50 +19,53 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  LayoutGrid, 
+import {
+  Plus,
+  Search,
+  Filter,
+  LayoutGrid,
   List,
   Phone,
   Mail,
   ChevronRight,
-  MoreHorizontal,
+  Sparkles,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { mockLeads } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Lead, LeadStage } from '@/types/agents';
 import { Link } from 'react-router-dom';
 import confetti from 'canvas-confetti';
+import { differenceInHours, formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { addLead, updateLeadStage, useLeadStore } from '@/lib/agents/leads/store';
+import { add as addNotification, useNotificationStore } from '@/lib/agents/notifications/store';
+import { toast } from '@/components/ui/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 
-const stageConfig: Record<LeadStage, { label: string; color: string }> = {
-  new: { label: 'Nuevos', color: 'bg-blue-500' },
-  contacted: { label: 'Contactados', color: 'bg-purple-500' },
-  engaged: { label: 'En Charla', color: 'bg-amber-500' },
-  appointment_set: { label: 'Cita Agendada', color: 'bg-teal-500' },
-  met: { label: 'Reunidos', color: 'bg-indigo-500' },
-  negotiating: { label: 'Negociando', color: 'bg-orange-500' },
-  closed_won: { label: 'Cerrado ✓', color: 'bg-green-500' },
-  closed_lost: { label: 'Perdido', color: 'bg-gray-500' },
-  archived: { label: 'Archivado', color: 'bg-gray-400' },
+const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
+  new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
+  contacted: { label: 'Contactado', color: 'bg-purple-500', helper: 'Primer respuesta enviada' },
+  appointment_set: { label: 'Appointment Set', color: 'bg-teal-500', helper: 'Cita programada' },
+  toured: { label: 'Toured', color: 'bg-indigo-500', helper: 'Visita realizada' },
+  closed: { label: 'Closed', color: 'bg-green-500', helper: 'Venta/arrendo cerrado' },
+  closed_lost: { label: 'Closed Lost', color: 'bg-gray-500', helper: 'Perdido' },
 };
 
-const pipelineStages: LeadStage[] = ['new', 'contacted', 'engaged', 'appointment_set', 'met', 'negotiating', 'closed_won'];
+const pipelineStages: LeadStage[] = ['new', 'contacted', 'appointment_set', 'toured', 'closed'];
 
 interface LeadCardProps {
   lead: Lead;
+  unread: boolean;
   isDragging?: boolean;
 }
 
-function LeadCard({ lead, isDragging }: LeadCardProps) {
+function LeadCard({ lead, unread, isDragging }: LeadCardProps) {
   const {
     attributes,
     listeners,
@@ -76,6 +80,8 @@ function LeadCard({ lead, isDragging }: LeadCardProps) {
     transition,
   };
 
+  const isNew = lead.stage === 'new' || differenceInHours(new Date(), lead.createdAt) <= 48;
+
   return (
     <motion.div
       ref={setNodeRef}
@@ -84,17 +90,21 @@ function LeadCard({ lead, isDragging }: LeadCardProps) {
       {...listeners}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
+      whileHover={{ translateY: -2 }}
       className={cn(
-        'bg-card border rounded-lg p-3 cursor-grab active:cursor-grabbing',
-        'hover:shadow-md hover:-translate-y-0.5 transition-all',
-        (isDragging || isSorting) && 'opacity-50 shadow-lg scale-105'
+        'bg-card border rounded-lg p-3 cursor-grab active:cursor-grabbing transition-all shadow-sm',
+        'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+        (isDragging || isSorting) && 'opacity-60 shadow-lg scale-[1.02]',
+        isNew && 'ring-2 ring-primary/10'
       )}
+      tabIndex={0}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary/10 text-primary text-xs">
-              {lead.firstName[0]}{lead.lastName?.[0] || ''}
+              {lead.firstName[0]}
+              {lead.lastName?.[0] || ''}
             </AvatarFallback>
           </Avatar>
           <div>
@@ -102,45 +112,42 @@ function LeadCard({ lead, isDragging }: LeadCardProps) {
               {lead.firstName} {lead.lastName}
             </p>
             <p className="text-xs text-muted-foreground">
-              {lead.interestedIn === 'buy' ? 'Comprar' : lead.interestedIn === 'sell' ? 'Vender' : 'Rentar'}
+              {lead.interestedIn === 'buy'
+                ? 'Comprar'
+                : lead.interestedIn === 'sell'
+                  ? 'Vender'
+                  : 'Rentar'}
             </p>
           </div>
         </div>
-        <Badge 
-          variant="secondary"
-          className={cn(
-            'text-[10px] px-1.5',
-            lead.temperature === 'hot' && 'badge-hot',
-            lead.temperature === 'warm' && 'badge-warm',
-            lead.temperature === 'cold' && 'badge-cold'
-          )}
-        >
-          {lead.temperature === 'hot' ? '🔥' : lead.temperature === 'warm' ? '☀️' : '❄️'}
-        </Badge>
+        <div className="flex gap-1 items-center">
+          {isNew && <Badge variant="secondary" className="text-[10px]">Nuevo</Badge>}
+          {unread && <Badge variant="default" className="text-[10px]">Msg</Badge>}
+        </div>
       </div>
-      
+
       {lead.budgetMax && (
         <p className="text-xs text-muted-foreground mb-2">
           ${(lead.budgetMin || 0).toLocaleString()} - ${lead.budgetMax.toLocaleString()}
         </p>
       )}
-      
+
       <div className="flex items-center justify-between">
         <div className="flex gap-1">
           {lead.phone && (
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <Phone className="h-3 w-3" />
+            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Llamar lead">
+              <Phone className="h-3.5 w-3.5" />
             </Button>
           )}
           {lead.email && (
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <Mail className="h-3 w-3" />
+            <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Enviar email">
+              <Mail className="h-3.5 w-3.5" />
             </Button>
           )}
         </div>
         <Link to={`/agents/leads/${lead.id}`}>
-          <Button variant="ghost" size="icon" className="h-6 w-6">
-            <ChevronRight className="h-3 w-3" />
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Ver detalle">
+            <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         </Link>
       </div>
@@ -151,32 +158,49 @@ function LeadCard({ lead, isDragging }: LeadCardProps) {
 interface StageColumnProps {
   stage: LeadStage;
   leads: Lead[];
+  unreadIds: Set<string>;
 }
 
-function StageColumn({ stage, leads }: StageColumnProps) {
+function StageColumn({ stage, leads, unreadIds }: StageColumnProps) {
   const config = stageConfig[stage];
-  
+  const { setNodeRef, isOver } = useDroppable({ id: stage });
+
   return (
-    <div className="flex-shrink-0 w-72">
+    <div className="flex-shrink-0 w-80" ref={setNodeRef} aria-label={`Columna ${config.label}`}>
       <div className="flex items-center gap-2 mb-3 px-1">
         <div className={cn('w-2 h-2 rounded-full', config.color)} />
         <h3 className="font-medium text-sm">{config.label}</h3>
-        <Badge variant="secondary" className="ml-auto text-xs">
-          {leads.length}
-        </Badge>
+        <AnimatePresence mode="popLayout">
+          <motion.span
+            key={leads.length}
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="ml-auto"
+          >
+            <Badge variant="secondary" className="text-xs">
+              {leads.length}
+            </Badge>
+          </motion.span>
+        </AnimatePresence>
       </div>
-      
-      <div className="bg-muted/30 rounded-lg p-2 min-h-[400px]">
-        <SortableContext items={leads.map(l => l.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
+
+      <div
+        className={cn(
+          'rounded-lg p-2 min-h-[420px] bg-muted/30 border border-dashed transition-colors',
+          isOver && 'border-primary/60 bg-primary/5 shadow-inner'
+        )}
+      >
+        <SortableContext items={leads.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2" role="list">
             {leads.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} />
+              <LeadCard key={lead.id} lead={lead} unread={unreadIds.has(lead.id)} />
             ))}
           </div>
         </SortableContext>
-        
+
         {leads.length === 0 && (
-          <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
+          <div className="flex items-center justify-center h-24 text-sm text-muted-foreground" role="status">
             Sin leads
           </div>
         )}
@@ -186,30 +210,50 @@ function StageColumn({ stage, leads }: StageColumnProps) {
 }
 
 export default function AgentLeads() {
+  const { leads } = useLeadStore();
+  const { notifications } = useNotificationStore();
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
   const [searchQuery, setSearchQuery] = useState('');
-  const [leads, setLeads] = useState(mockLeads);
+  const [stageFilter, setStageFilter] = useState<LeadStage[] | 'all'>('all');
+  const [onlyNew, setOnlyNew] = useState(false);
+  const [onlyUnread, setOnlyUnread] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const leadsByStage = useMemo(() => {
-    const filtered = leads.filter(lead =>
-      lead.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.email?.toLowerCase().includes(searchQuery.toLowerCase())
+  const unreadLeadIds = useMemo(() => {
+    return new Set(
+      notifications
+        .filter((n) => n.type === 'message' && n.status === 'unread' && n.actionUrl?.includes('/agents/leads/'))
+        .map((n) => n.actionUrl?.split('/').pop() || '')
+        .filter(Boolean)
     );
+  }, [notifications]);
 
+  const filteredLeads = useMemo(() => {
+    const text = searchQuery.toLowerCase();
+    return leads
+      .filter((lead) =>
+        [lead.firstName, lead.lastName, lead.email, lead.phone]
+          .filter(Boolean)
+          .some((value) => value?.toLowerCase().includes(text))
+      )
+      .filter((lead) => stageFilter === 'all' || stageFilter.includes(lead.stage))
+      .filter((lead) => !onlyNew || differenceInHours(new Date(), lead.createdAt) <= 48 || lead.stage === 'new')
+      .filter((lead) => !onlyUnread || unreadLeadIds.has(lead.id));
+  }, [leads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds]);
+
+  const leadsByStage = useMemo(() => {
     return pipelineStages.reduce((acc, stage) => {
-      acc[stage] = filtered.filter(lead => lead.stage === stage);
+      acc[stage] = filteredLeads.filter((lead) => lead.stage === stage);
       return acc;
-    }, {} as Record<LeadStage, Lead[]>);
-  }, [leads, searchQuery]);
+    }, {} as Partial<Record<LeadStage, Lead[]>>);
+  }, [filteredLeads]);
 
-  const activeLead = activeId ? leads.find(l => l.id === activeId) : null;
+  const activeLead = activeId ? leads.find((l) => l.id === activeId) : null;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -218,41 +262,77 @@ export default function AgentLeads() {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
-
     if (!over) return;
 
     const activeLeadId = active.id as string;
     const overId = over.id as string;
 
-    // Find the stage of the over element
     let targetStage: LeadStage | null = null;
-    
-    for (const stage of pipelineStages) {
-      if (leadsByStage[stage].some(l => l.id === overId)) {
-        targetStage = stage;
-        break;
-      }
+    if (pipelineStages.includes(overId as LeadStage)) {
+      targetStage = overId as LeadStage;
+    } else {
+      targetStage = pipelineStages.find((stage) => leadsByStage[stage]?.some((l) => l.id === overId)) || null;
     }
 
     if (!targetStage) return;
 
-    const activeLead = leads.find(l => l.id === activeLeadId);
-    if (!activeLead || activeLead.stage === targetStage) return;
+    const previous = updateLeadStage(activeLeadId, targetStage);
+    if (!previous || previous.stage === targetStage) return;
 
-    // Update lead stage
-    setLeads(prev => prev.map(lead =>
-      lead.id === activeLeadId
-        ? { ...lead, stage: targetStage! }
-        : lead
-    ));
+    const stageLabel = stageConfig[targetStage].label;
+    toast({
+      title: `Lead movido a ${stageLabel}`,
+      description: `${previous.firstName} ahora está en ${stageLabel}.`,
+      duration: 5000,
+      action: (
+        <ToastAction altText="Deshacer" onClick={() => updateLeadStage(activeLeadId, previous.stage)}>
+          Deshacer
+        </ToastAction>
+      ),
+    });
 
-    // Celebrate if moved to closed_won
-    if (targetStage === 'closed_won') {
-      confetti({
-        particleCount: 50,
-        spread: 60,
-        origin: { y: 0.7 },
-      });
+    addNotification({
+      type: targetStage === 'appointment_set' ? 'appointment' : 'lead',
+      title: targetStage === 'appointment_set' ? 'Cita programada' : `Lead movido a ${stageLabel}`,
+      body: `${previous.firstName} ${previous.lastName || ''}`.trim(),
+      actionUrl: `/agents/leads/${activeLeadId}`,
+    });
+
+    if (targetStage === 'closed') {
+      confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+    }
+  };
+
+  const handleAddLead = () => {
+    const random = Math.floor(Math.random() * 900) + 100;
+    const newLead = addLead({
+      firstName: `Lead ${random}`,
+      lastName: 'Demo',
+      stage: 'new',
+      interestedIn: 'buy',
+      source: 'marketplace',
+      temperature: 'warm',
+    });
+    toast({
+      title: 'Lead creado',
+      description: `${newLead.firstName} añadido al pipeline (New).`,
+    });
+    addNotification({
+      type: 'lead',
+      title: 'Nuevo lead asignado',
+      body: `${newLead.firstName} acaba de ingresar`,
+      actionUrl: `/agents/leads/${newLead.id}`,
+    });
+  };
+
+  const toggleStageFilter = (stage: LeadStage) => {
+    if (stageFilter === 'all') {
+      setStageFilter([stage]);
+    } else {
+      const next = stageFilter.includes(stage)
+        ? stageFilter.filter((s) => s !== stage)
+        : [...stageFilter, stage];
+      setStageFilter(next.length === pipelineStages.length ? 'all' : next);
     }
   };
 
@@ -267,29 +347,63 @@ export default function AgentLeads() {
       <motion.div variants={staggerItem} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
-          <p className="text-muted-foreground">
-            Gestiona tu pipeline de clientes potenciales
-          </p>
+          <p className="text-muted-foreground">Pipeline Kanban (New → Closed)</p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
+        <Button onClick={handleAddLead} className="gap-2">
+          <Plus className="h-4 w-4" />
           Nuevo Lead
         </Button>
       </motion.div>
 
       {/* Filters */}
-      <motion.div variants={staggerItem} className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar leads..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
+      <motion.div variants={staggerItem} className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center flex-1">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar leads..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              aria-label="Buscar leads"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge
+              variant={stageFilter === 'all' ? 'default' : 'outline'}
+              className="cursor-pointer"
+              onClick={() => setStageFilter('all')}
+            >
+              Todos
+            </Badge>
+            {pipelineStages.map((stage) => (
+              <Badge
+                key={stage}
+                variant={stageFilter !== 'all' && stageFilter.includes(stage) ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => toggleStageFilter(stage)}
+              >
+                {stageConfig[stage].label}
+              </Badge>
+            ))}
+            <Badge
+              variant={onlyNew ? 'default' : 'outline'}
+              className="cursor-pointer"
+              onClick={() => setOnlyNew((v) => !v)}
+            >
+              <Sparkles className="h-3 w-3 mr-1" /> Nuevos 48h
+            </Badge>
+            <Badge
+              variant={onlyUnread ? 'default' : 'outline'}
+              className="cursor-pointer"
+              onClick={() => setOnlyUnread((v) => !v)}
+            >
+              Mensajes sin leer
+            </Badge>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="icon">
+        <div className="flex gap-2 self-start">
+          <Button variant="outline" size="icon" aria-label="Abrir filtros avanzados">
             <Filter className="h-4 w-4" />
           </Button>
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'pipeline' | 'list')}>
@@ -313,30 +427,34 @@ export default function AgentLeads() {
             collisionDetection={closestCorners}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
+            autoScroll
           >
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            <div className="flex gap-4 overflow-x-auto pb-4" role="list" aria-label="Pipeline Kanban">
               {pipelineStages.map((stage) => (
                 <StageColumn
                   key={stage}
                   stage={stage}
                   leads={leadsByStage[stage] || []}
+                  unreadIds={unreadLeadIds}
                 />
               ))}
             </div>
-            
+
             <DragOverlay>
               {activeLead && (
-                <div className="bg-card border rounded-lg p-3 shadow-xl rotate-3 scale-105">
+                <div className="bg-card border rounded-lg p-3 shadow-xl rotate-3 scale-105 min-w-[220px]">
                   <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8">
                       <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                        {activeLead.firstName[0]}{activeLead.lastName?.[0] || ''}
+                        {activeLead.firstName[0]}
+                        {activeLead.lastName?.[0] || ''}
                       </AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="font-medium text-sm">
                         {activeLead.firstName} {activeLead.lastName}
                       </p>
+                      <p className="text-xs text-muted-foreground">{stageConfig[activeLead.stage].label}</p>
                     </div>
                   </div>
                 </div>
@@ -351,19 +469,18 @@ export default function AgentLeads() {
         <motion.div variants={staggerItem}>
           <Card>
             <CardContent className="p-0">
-              <div className="divide-y">
-                {leads.filter(lead =>
-                  lead.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  lead.lastName?.toLowerCase().includes(searchQuery.toLowerCase())
-                ).map((lead) => (
+              <div className="divide-y" role="list">
+                {filteredLeads.map((lead) => (
                   <Link
                     key={lead.id}
                     to={`/agents/leads/${lead.id}`}
-                    className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
+                    className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    role="listitem"
                   >
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="bg-primary/10 text-primary">
-                        {lead.firstName[0]}{lead.lastName?.[0] || ''}
+                        {lead.firstName[0]}
+                        {lead.lastName?.[0] || ''}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
@@ -375,21 +492,17 @@ export default function AgentLeads() {
                       </p>
                     </div>
                     <Badge variant="outline" className="hidden sm:inline-flex">
-                      {stageConfig[lead.stage].label}
+                      {stageConfig[lead.stage]?.label || lead.stage}
                     </Badge>
-                    <Badge 
-                      variant="secondary"
-                      className={cn(
-                        lead.temperature === 'hot' && 'badge-hot',
-                        lead.temperature === 'warm' && 'badge-warm',
-                        lead.temperature === 'cold' && 'badge-cold'
-                      )}
-                    >
-                      {lead.temperature === 'hot' ? '🔥 Caliente' : lead.temperature === 'warm' ? '☀️ Tibio' : '❄️ Frío'}
-                    </Badge>
+                    {unreadLeadIds.has(lead.id) && <Badge variant="default">Msg</Badge>}
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </Link>
                 ))}
+                {filteredLeads.length === 0 && (
+                  <div className="py-10 text-center text-muted-foreground text-sm">
+                    No hay leads con estos filtros
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

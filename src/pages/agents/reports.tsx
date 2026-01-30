@@ -91,10 +91,18 @@ export default function AgentReports() {
             KPIs de retención, velocidad y conversión inspirados en Zillow Premier Agent.
           </p>
         </div>
-        <Badge variant="secondary" className="gap-2">
-          <BarChart3 className="h-4 w-4" />
-          {upcoming} citas programadas
-        </Badge>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <a href="/agents/reports/experience">Customer Experience</a>
+          </Button>
+          <Button variant="outline" asChild>
+            <a href="/agents/reports/roi">ROI Créditos</a>
+          </Button>
+          <Badge variant="secondary" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            {upcoming} citas programadas
+          </Badge>
+        </div>
       </motion.div>
 
       {/* KPIs */}

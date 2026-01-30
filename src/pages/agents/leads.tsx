@@ -46,6 +46,8 @@ import { es } from 'date-fns/locale';
 import { add as addNotification, useNotificationStore } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
+import { matchAgent } from '@/lib/agents/routing/store';
+import { mockTeamAgents } from '@/lib/agents/fixtures';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -318,9 +320,10 @@ export default function AgentLeads() {
 
   const handleAddLead = () => {
     const random = Math.floor(Math.random() * 900) + 100;
+    const assignedTo = matchAgent({ zone: 'Polanco', price: 5000000 }) || 'agent-1';
     const newLead: Lead = {
       id: `lead-${Date.now()}`,
-      agentId: 'agent-1',
+      agentId: assignedTo,
       firstName: `Lead ${random}`,
       lastName: 'Demo',
       stage: 'new',
@@ -336,7 +339,7 @@ export default function AgentLeads() {
 
     toast({
       title: 'Lead creado',
-      description: `${newLead.firstName} añadido al pipeline (New).`,
+      description: `${newLead.firstName} asignado a ${mockTeamAgents.find(a => a.id === assignedTo)?.firstName || 'agente'}.`,
     });
     addNotification({
       type: 'lead',

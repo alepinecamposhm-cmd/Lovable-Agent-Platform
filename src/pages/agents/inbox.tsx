@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Search, 
@@ -61,6 +61,17 @@ function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean })
           )}
         >
           {message.content}
+          {message.attachments?.map((att) => (
+            <div key={att.id} className="mt-2 rounded-lg border bg-background p-2 text-xs">
+              {att.mimeType.startsWith('image/') ? (
+                <img src={att.url} alt={att.filename} className="max-h-40 rounded" />
+              ) : (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Paperclip className="h-3 w-3" /> {att.filename}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
         <div className={cn(
           'flex items-center gap-1 mt-1 text-xs text-muted-foreground',
@@ -146,6 +157,8 @@ export default function AgentInbox() {
   const [messageInput, setMessageInput] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
   const [onlyUnreadConv, setOnlyUnreadConv] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const filteredConversations = conversations.filter(conv =>
     conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||

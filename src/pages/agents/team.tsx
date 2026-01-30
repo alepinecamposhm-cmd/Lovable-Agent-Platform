@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -17,12 +17,12 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
-import { RoutingRulesDialog, RoutingRule } from '@/components/agents/team/RoutingRulesDialog';
+import { useRoutingStore, addRule, deleteRule, togglePauseAgent, getPausedAgents, RoutingRule } from '@/lib/agents/routing/store';
 
 const teamMembers = [
-  { name: `${mockAgent.firstName} ${mockAgent.lastName}`, role: 'Propietario', email: mockAgent.email },
-  { name: 'Lucía Torres', role: 'Admin', email: 'lucia@realty.com' },
-  { name: 'Javier Soto', role: 'Agente', email: 'javier@realty.com' },
+  { name: `${mockAgent.firstName} ${mockAgent.lastName}`, role: 'Propietario', email: mockAgent.email, id: mockAgent.id },
+  { name: 'Lucía Torres', role: 'Admin', email: 'lucia@realty.com', id: 'agent-2' },
+  { name: 'Javier Soto', role: 'Agente', email: 'javier@realty.com', id: 'agent-3' },
 ];
 
 const invites = [
@@ -31,11 +31,10 @@ const invites = [
 
 export default function AgentTeam() {
   const [inviteEmail, setInviteEmail] = useState('');
-  // Mock initial rules
-  const [rules, setRules] = useState<RoutingRule[]>([
-    { id: '1', zone: 'Condesa', assignToEmail: 'javier@realty.com' },
-    { id: '2', zone: 'Polanco', assignToEmail: 'lucia@realty.com' }
-  ]);
+  const routingRules = useRoutingStore();
+  const pausedAgents = useMemo(() => getPausedAgents(), []);
+  const [newZone, setNewZone] = useState('');
+  const [newAssignee, setNewAssignee] = useState(teamMembers[0].id);
 
   const teamMembersList = teamMembers.map(m => ({ email: m.email, name: m.name }));
 
@@ -157,11 +156,25 @@ export default function AgentTeam() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <p className="text-muted-foreground">
-                Evita asignaciones nuevas mientras el agente está ausente. Reactiva con un clic.
-              </p>
-              <Button variant="outline" size="sm" className="w-full justify-center">Pausar asignaciones</Button>
-              <p className="text-xs text-muted-foreground">Trigger: evita nuevos leads; se mantiene histórico intacto.</p>
+              <p className="text-muted-foreground">Evita asignaciones nuevas mientras el agente está ausente.</p>
+              <div className="space-y-2">
+                {teamMembers.map((member) => {
+                  const isPaused = pausedAgents.has(member.id);
+                  return (
+                    <div key={member.id} className="flex items-center justify-between p-2 rounded-lg border bg-muted/40">
+                      <span>{member.name.split(' ')[0]}</span>
+                      <Button
+                        variant={isPaused ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => togglePauseAgent(member.id, !isPaused)}
+                      >
+                        {isPaused ? 'Reanudar' : 'Pausar'}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">Trigger: evita nuevos leads; histórico intacto.</p>
             </CardContent>
           </Card>
 
@@ -174,20 +187,35 @@ export default function AgentTeam() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex flex-wrap gap-2 text-xs">
-                {rules.map(rule => (
+                {routingRules.map(rule => (
                   <Badge key={rule.id} variant="secondary">
-                    Zona: {rule.zone} → {teamMembers.find(m => m.email === rule.assignToEmail)?.name.split(' ')[0] || 'Agente'}
+                    Zona: {rule.zone} → {teamMembers.find(m => m.id === rule.assignToAgentId)?.name.split(' ')[0] || 'Agente'}
                   </Badge>
                 ))}
-                {rules.length === 0 && <span className="text-muted-foreground italic">Sin reglas activas</span>}
+                {routingRules.length === 0 && <span className="text-muted-foreground italic">Sin reglas activas</span>}
               </div>
               <p className="text-muted-foreground">
                 Motor de reglas para asignar leads automáticamente según área o rango de precio.
               </p>
-              <RoutingRulesDialog
-                initialRules={rules}
-                teamMembers={teamMembersList}
-              />
+              <div className="grid sm:grid-cols-3 gap-2">
+                <Input placeholder="Zona (ej. Polanco)" value={newZone} onChange={(e) => setNewZone(e.target.value)} />
+                <select className="rounded-md border px-3 py-2 text-sm" value={newAssignee} onChange={(e) => setNewAssignee(e.target.value)}>
+                  {teamMembers.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+                <Button onClick={() => { if (!newZone) return; addRule({ zone: newZone, assignToAgentId: newAssignee }); setNewZone(''); }}>
+                  Agregar
+                </Button>
+              </div>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                {routingRules.map((rule) => (
+                  <div key={rule.id} className="flex items-center justify-between p-2 rounded border">
+                    <span>{rule.zone} → {teamMembers.find(m => m.id === rule.assignToAgentId)?.name || 'Agente'}</span>
+                    <Button variant="ghost" size="sm" onClick={() => deleteRule(rule.id)}>Eliminar</Button>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -105,10 +105,22 @@ export function setAppointmentStatus(id: string, status: AppointmentStatus) {
   return updateAppointment(id, { status });
 }
 
+let cachedSnapshot: { appointments: Appointment[]; _raw: Appointment[] } | null = null;
+
+function getSnapshot() {
+  if (!cachedSnapshot || cachedSnapshot._raw !== appointments) {
+    cachedSnapshot = {
+      appointments: listAppointments(),
+      _raw: appointments,
+    };
+  }
+  return cachedSnapshot;
+}
+
 export function useAppointmentStore() {
   return useSyncExternalStore(
     subscribe,
-    () => ({ appointments: listAppointments() }),
-    () => ({ appointments: listAppointments() })
+    getSnapshot,
+    getSnapshot
   );
 }

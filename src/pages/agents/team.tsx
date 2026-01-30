@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
-import { useRoutingStore, addRule, deleteRule, togglePauseAgent, getPausedAgents, RoutingRule } from '@/lib/agents/routing/store';
+import { useRoutingStore, addRule, deleteRule, togglePauseAgent, getPausedAgents } from '@/lib/agents/routing/store';
 
 const teamMembers = [
   { name: `${mockAgent.firstName} ${mockAgent.lastName}`, role: 'Propietario', email: mockAgent.email, id: mockAgent.id },
@@ -32,11 +32,9 @@ const invites = [
 export default function AgentTeam() {
   const [inviteEmail, setInviteEmail] = useState('');
   const routingRules = useRoutingStore();
-  const pausedAgents = useMemo(() => getPausedAgents(), []);
+  const pausedAgents = getPausedAgents();
   const [newZone, setNewZone] = useState('');
   const [newAssignee, setNewAssignee] = useState(teamMembers[0].id);
-
-  const teamMembersList = teamMembers.map(m => ({ email: m.email, name: m.name }));
 
   return (
     <motion.div

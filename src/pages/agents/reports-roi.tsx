@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import { mockCreditAccount, mockLedger } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
-import { Save, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
 
 export default function AgentRoiReport() {
   const [filter, setFilter] = useState('30');

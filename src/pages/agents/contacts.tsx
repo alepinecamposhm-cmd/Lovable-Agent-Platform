@@ -20,6 +20,7 @@ export default function AgentContacts() {
   const [state, setState] = useState<'loading' | 'success' | 'empty'>('loading');
 
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [dedupeDismissed, setDedupeDismissed] = useState(() => typeof window !== 'undefined' && localStorage.getItem('agenthub_dedupe_dismissed') === '1');
 
   useEffect(() => {
     if (contacts.length === 0) setState('empty');
@@ -108,7 +109,7 @@ export default function AgentContacts() {
       {state === 'success' && (
         <>
           {/* Dedupe suggestion banner */}
-          {duplicateGroups.length > 0 && (
+          {duplicateGroups.length > 0 && !dedupeDismissed && (
             <motion.div variants={staggerItem} className="p-4 rounded-lg border bg-yellow-50 text-sm flex items-center justify-between gap-3 mb-4">
               <div>
                 <p className="font-medium">Sugerencias de duplicados: {duplicateGroups.length} grupo(s) detectado(s)</p>
@@ -116,7 +117,7 @@ export default function AgentContacts() {
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => { setDuplicatesOpen(true); track('dedupe_suggestion_clicked', { count: duplicateGroups.length }); }}>Ver sugerencias</Button>
-                <Button size="sm" onClick={() => { track('dedupe_suggestion_dismissed'); localStorage.setItem('agenthub_dedupe_dismissed', '1'); }}>Omitir</Button>
+                <Button size="sm" onClick={() => { track('dedupe_suggestion_dismissed'); localStorage.setItem('agenthub_dedupe_dismissed', '1'); setDedupeDismissed(true); }}>Omitir</Button>
               </div>
             </motion.div>
           )}

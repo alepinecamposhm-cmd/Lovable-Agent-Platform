@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,16 +10,22 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { addFeedback, useCxStore } from '@/lib/agents/cx/store';
+import { useSurveyStore, sendDueSurveys, recordSurveyResponse, resendSurvey } from '@/lib/agents/cx/surveys';
 import { mockAgent } from '@/lib/agents/fixtures';
-import { Star, Plus, Filter, Loader2 } from 'lucide-react';
+import { Star, Plus, Filter, Loader2, Send } from 'lucide-react';
 
 export default function AgentExperienceReport() {
   const feedback = useCxStore();
+  const surveys = useSurveyStore();
   const [filterRating, setFilterRating] = useState<'all' | number>('all');
   const [adding, setAdding] = useState(false);
   const filtered = useMemo(() => {
     return feedback.filter((f) => filterRating === 'all' || f.rating === filterRating);
   }, [feedback, filterRating]);
+
+  useEffect(() => {
+    sendDueSurveys();
+  }, []);
 
   const addQuick = () => {
     setAdding(true);
@@ -88,6 +94,7 @@ export default function AgentExperienceReport() {
       <Tabs defaultValue="feed">
         <TabsList>
           <TabsTrigger value="feed">Feedback</TabsTrigger>
+          <TabsTrigger value="surveys">Surveys</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
         </TabsList>
         <TabsContent value="feed">
@@ -111,6 +118,41 @@ export default function AgentExperienceReport() {
                   ))}
                 </div>
               </ScrollArea>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="surveys">
+          <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="text-base">Encuestas automáticas</CardTitle>
+              <Badge variant="outline">{surveys.length} items</Badge>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {surveys.length === 0 && <p className="text-sm text-muted-foreground">Empty state: sin encuestas programadas.</p>}
+              <div className="divide-y">
+                {surveys.map((s) => (
+                  <div key={s.id} className="py-3 flex items-start gap-3">
+                    <Badge variant="secondary" className="capitalize">{s.wave}</Badge>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Lead {s.leadId}</p>
+                      <p className="text-xs text-muted-foreground">Estado: {s.status}</p>
+                      <p className="text-xs text-muted-foreground">Programada: {s.scheduledAt.toLocaleString()}</p>
+                      {s.sentAt && <p className="text-xs text-muted-foreground">Enviada: {s.sentAt.toLocaleString()}</p>}
+                      {s.receivedAt && <p className="text-xs text-muted-foreground">Recibida: {s.receivedAt.toLocaleString()}</p>}
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {(s.status === 'scheduled' || s.status === 'sent') && (
+                        <Button size="sm" variant="outline" onClick={() => resendSurvey(s.id)} className="gap-1">
+                          <Send className="h-3 w-3" /> Reenviar
+                        </Button>
+                      )}
+                      {s.status !== 'received' && (
+                        <Button size="sm" onClick={() => recordSurveyResponse(s.id, 5)}>Registrar 5★</Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

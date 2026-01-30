@@ -380,3 +380,19 @@ export interface AgentFeedback {
   source: 'post_visit' | 'post_close' | 'survey';
   createdAt: Date;
 }
+
+export type CxSurveyStatus = 'scheduled' | 'sent' | 'received' | 'failed';
+export type CxSurveyWave = '24h' | '15d' | '45d';
+
+export interface CxSurvey {
+  id: string;
+  leadId: string;
+  agentId: string;
+  appointmentId?: string;
+  wave: CxSurveyWave;
+  status: CxSurveyStatus;
+  scheduledAt: Date;
+  sentAt?: Date;
+  receivedAt?: Date;
+  rating?: number;
+}

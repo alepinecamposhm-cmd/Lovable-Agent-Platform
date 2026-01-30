@@ -12,6 +12,7 @@ import type {
   AgentMetrics,
   LeadActivity,
   AgentFeedback,
+  CxSurvey,
 } from '@/types/agents';
 
 export const mockAgent: Agent = {
@@ -759,5 +760,38 @@ export const mockAgentFeedback: AgentFeedback[] = [
     comment: 'La visita empezó tarde, pero resolvió dudas.',
     source: 'post_visit',
     createdAt: new Date('2026-01-24T10:30:00'),
+  },
+];
+
+export const mockSurveys: CxSurvey[] = [
+  {
+    id: 'sv-1',
+    leadId: 'lead-1',
+    agentId: 'agent-1',
+    appointmentId: 'apt-1',
+    wave: '24h',
+    status: 'sent',
+    scheduledAt: new Date('2026-01-29T12:00:00'),
+    sentAt: new Date('2026-01-29T12:00:00'),
+  },
+  {
+    id: 'sv-2',
+    leadId: 'lead-3',
+    agentId: 'agent-1',
+    appointmentId: 'apt-3',
+    wave: '15d',
+    status: 'received',
+    scheduledAt: new Date('2026-01-20T10:00:00'),
+    sentAt: new Date('2026-01-20T10:00:00'),
+    receivedAt: new Date('2026-01-21T18:00:00'),
+    rating: 5,
+  },
+  {
+    id: 'sv-3',
+    leadId: 'lead-2',
+    agentId: 'agent-1',
+    wave: '45d',
+    status: 'scheduled',
+    scheduledAt: new Date('2026-02-10T09:00:00'),
   },
 ];

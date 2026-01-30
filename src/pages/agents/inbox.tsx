@@ -175,6 +175,10 @@ export default function AgentInbox() {
     [leads, selectedConversation?.leadId]
   );
 
+  useEffect(() => {
+    track('navigation.page_view', { properties: { path: '/agents/inbox' } });
+  }, []);
+
   const filteredConversations = conversations
     .filter(conv =>
       conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -12,7 +12,6 @@ import { track } from '@/lib/analytics';
 import { Plus, Search } from 'lucide-react';
 import { findDuplicateGroups } from '@/lib/contacts/dedupe';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { useState, useMemo } from 'react';
 
 export default function AgentContacts() {
   const navigate = useNavigate();
@@ -29,6 +28,7 @@ export default function AgentContacts() {
 
   useEffect(() => {
     track('contact.list_view');
+    track('navigation.page_view', { properties: { path: '/agents/contacts' } });
   }, []);
 
   // Compute duplicate suggestion groups (exact email / normalized phone)

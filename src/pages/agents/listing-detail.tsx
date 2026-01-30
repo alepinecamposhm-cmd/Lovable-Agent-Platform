@@ -77,6 +77,7 @@ export default function AgentListingDetail() {
   }, [params.listingId]);
 
   if (!listing) {
+    track('route_error.listing_not_found', { properties: { listingId: params.listingId } });
     return (
       <div className="space-y-4">
         <Button variant="ghost" onClick={() => safeBack('/agents/listings')} className="gap-2">
@@ -217,6 +218,7 @@ export default function AgentListingDetail() {
         setActivityState('empty');
         return;
       }
+      track('navigation.page_view', { properties: { path: '/agents/listings/:listingId', listingId: listing.id } });
       const events = listListingActivities(listing.id);
       if (!events.length) {
         setActivityState('empty');

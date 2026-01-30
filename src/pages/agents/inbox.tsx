@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { mockConversations, mockMessages, mockAgent, mockLeads } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
+import { track } from '@/lib/analytics';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -268,7 +269,7 @@ export default function AgentInbox() {
       };
       setMessages((prev) => [...prev, outgoing]);
       setUploading(false);
-      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'chat.attachment_upload', type: file.type } }));
+      track('chat.attachment_upload', { properties: { type: file.type } });
     };
     reader.onerror = () => {
       setUploading(false);
@@ -321,7 +322,7 @@ export default function AgentInbox() {
               const leadId = slaLeads[0].id;
               const conv = conversations.find((c) => c.leadId === leadId);
               if (conv) setSelectedConversation(conv);
-              window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'sla.board_click', leadId } }));
+              track('sla.board_click', { properties: { leadId } });
             }}
           >
             Responder ahora

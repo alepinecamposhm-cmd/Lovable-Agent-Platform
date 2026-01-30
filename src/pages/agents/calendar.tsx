@@ -54,6 +54,7 @@ import { es } from 'date-fns/locale';
 import type { Appointment } from '@/types/agents';
 import { add as addNotification } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
+import { track } from '@/lib/analytics';
 import { addNoShowFollowUp } from '@/lib/agents/tasks/store';
 
 const statusConfig = {
@@ -223,7 +224,7 @@ export default function AgentCalendar() {
   }, [appointments, agentFilter]);
 
   useEffect(() => {
-    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'calendar.switch_agent', agentId: agentFilter } }));
+    track('calendar.switch_agent', { properties: { agentId: agentFilter } });
   }, [agentFilter]);
 
   const getAppointmentsForDate = (date: Date) =>
@@ -266,7 +267,7 @@ export default function AgentCalendar() {
       body: `${apt.lead?.firstName || 'Lead'} · follow-up creado`,
       actionUrl: '/agents/tasks',
     });
-    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'appointment.no_show', appointmentId: apt.id } }));
+    track('appointment.no_show', { properties: { appointmentId: apt.id } });
     toast({ title: 'Marcado como no-show', description: 'Se creó tarea automática de seguimiento.' });
   };
 

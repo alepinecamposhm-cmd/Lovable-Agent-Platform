@@ -9,8 +9,19 @@ export interface RoutingRule {
   assignToAgentId: string;
 }
 
+export interface RoutingAudit {
+  id: string;
+  zone?: string;
+  price?: number;
+  matchedAgentId: string;
+  ruleId?: string;
+  reason: 'assignment' | 'simulation';
+  createdAt: Date;
+}
+
 const STORAGE_KEY = 'agenthub_routing_rules';
 const PAUSED_KEY = 'agenthub_paused_agents';
+const AUDIT_KEY = 'agenthub_routing_audit';
 const listeners = new Set<() => void>();
 
 function load(): RoutingRule[] {
@@ -29,7 +40,24 @@ function save(data: RoutingRule[]) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+function loadAudit(): RoutingAudit[] {
+  if (typeof window === 'undefined') return [];
+  const raw = window.localStorage.getItem(AUDIT_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw).map((a: any) => ({ ...a, createdAt: new Date(a.createdAt) })) as RoutingAudit[];
+  } catch {
+    return [];
+  }
+}
+
+function saveAudit(data: RoutingAudit[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(AUDIT_KEY, JSON.stringify(data));
+}
+
 let rules = load();
+let audit = loadAudit();
 let snapshot: { rules: RoutingRule[]; paused: Set<string> } | null = null;
 
 function emit() {
@@ -90,6 +118,35 @@ export function matchAgent({ zone, price }: { zone?: string; price?: number }) {
   if (found && !paused.has(found.assignToAgentId)) return found.assignToAgentId;
   const fallback = mockTeamAgents.find((a) => !paused.has(a.id))?.id;
   return fallback || 'agent-1';
+}
+
+export function matchAgentWithAudit(params: { zone?: string; price?: number; reason?: 'assignment' | 'simulation' }) {
+  const { zone, price, reason = 'assignment' } = params;
+  const agentId = matchAgent({ zone, price });
+  const rule = rules.find((r) => {
+    if (zone && r.zone && r.zone.toLowerCase() !== zone.toLowerCase()) return false;
+    if (typeof price === 'number') {
+      if (r.minPrice && price < r.minPrice) return false;
+      if (r.maxPrice && price > r.maxPrice) return false;
+    }
+    return true;
+  });
+  const entry: RoutingAudit = {
+    id: `ra-${globalThis.crypto?.randomUUID?.() || Date.now()}`,
+    zone,
+    price,
+    matchedAgentId: agentId,
+    ruleId: rule?.id,
+    reason,
+    createdAt: new Date(),
+  };
+  audit = [entry, ...audit].slice(0, 200);
+  saveAudit(audit);
+  return { agentId, ruleId: rule?.id };
+}
+
+export function listRoutingAudit(): RoutingAudit[] {
+  return audit.slice().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
 function getSnapshot() {

@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
+import { track } from '@/lib/analytics';
 import { useListingStore, listListingActivities } from '@/lib/agents/listings/store';
 import { addAppointment } from '@/lib/agents/appointments/store';
 import { add as addNotification } from '@/lib/agents/notifications/store';
@@ -156,7 +157,7 @@ export default function AgentListingDetail() {
         body: `${listing.address.street} · ${date.toLocaleString()}`,
         actionUrl: '/agents/calendar',
       });
-      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'openhouse.create', listingId: listing.id, appointmentId: apt.id } }));
+      track('openhouse.create', { properties: { listingId: listing.id, appointmentId: apt.id } });
       toast({ title: 'Open house programado', description: 'Se añadió al calendario (mock local).' });
       setScheduling(false);
     } catch (e) {
@@ -171,8 +172,8 @@ export default function AgentListingDetail() {
     const st = integrations.find((i) => i.id === 'showingtime');
     if (!st || st.status !== 'connected') {
       toast({ title: 'Conecta ShowingTime', description: 'Ve a Integraciones para autorizar.', variant: 'destructive' });
-      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_error', integration: 'showingtime', reason: 'not_connected' } }));
-      return;
+      track('integration.action_error', { properties: { integration: 'showingtime', reason: 'not_connected' } });
+      return; 
     }
     const date = new Date();
     date.setHours(date.getHours() + 48);
@@ -194,7 +195,7 @@ export default function AgentListingDetail() {
       actionUrl: '/agents/calendar',
     });
     toast({ title: 'Cita creada (mock)', description: 'Mostrada en Calendario.' });
-    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_start', integration: 'showingtime', listingId: listing.id } }));
+    track('integration.action_start', { properties: { integration: 'showingtime', listingId: listing.id } });
   };
 
   useEffect(() => {

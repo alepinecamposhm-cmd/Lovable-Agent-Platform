@@ -46,6 +46,7 @@ import { es } from 'date-fns/locale';
 import { add as addNotification, useNotificationStore } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
+import { track } from '@/lib/analytics';
 import { matchAgent } from '@/lib/agents/routing/store';
 import { mockTeamAgents } from '@/lib/agents/fixtures';
 import { addTask } from '@/lib/agents/tasks/store';
@@ -252,7 +253,7 @@ export default function AgentLeads() {
         body: `${lead.firstName} en ${hit.stage} supera umbral`,
         actionUrl: `/agents/leads/${lead.id}`,
       });
-      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'reminder.fired', leadId: lead.id, ruleId: hit.ruleId } }));
+      track('reminder.fired', { properties: { leadId: lead.id, ruleId: hit.ruleId } });
     });
   }, [leads]);
 
@@ -286,7 +287,7 @@ export default function AgentLeads() {
           description: `${lead.firstName} espera respuesta. Creamos una tarea.`,
           action: <ToastAction altText="Abrir lead" onClick={() => window.location.assign(`/agents/leads/${lead.id}`)}>Ver lead</ToastAction>,
         });
-        window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'sla.nudge_shown', leadId: lead.id } }));
+        track('sla.nudge_shown', { properties: { leadId: lead.id } });
         localStorage.setItem('agenthub_sla_notified', '1');
       }
     }

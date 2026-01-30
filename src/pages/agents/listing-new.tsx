@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
+import { track } from '@/lib/analytics';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { addListing, getListing, updateListing } from '@/lib/agents/listings/store';
 import type { Listing, ListingStatus, PropertyType } from '@/types/agents';
@@ -155,13 +156,7 @@ export default function AgentListingWizard() {
 
       const saved = mode === 'create' ? addListing(payload) : updateListing(listingId!, payload);
 
-      window.dispatchEvent(new CustomEvent('analytics', {
-        detail: {
-          event: mode === 'create' ? 'listing.create' : 'listing.update',
-          listingId: mode === 'create' ? (saved as Listing).id : listingId,
-          status: form.status,
-        }
-      }));
+      track(mode === 'create' ? 'listing.create' : 'listing.update', { properties: { listingId: mode === 'create' ? (saved as Listing).id : listingId, status: form.status } });
 
       toast({
         title: mode === 'create' ? 'Listing creado' : 'Listing actualizado',

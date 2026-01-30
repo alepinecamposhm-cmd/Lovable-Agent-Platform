@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { CheckCircle, Globe2, Loader2, Share2, Sparkles, Star } from 'lucide-react';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
+import { track } from '@/lib/analytics';
 import { listAgents, getAgent, getProfileState, toggleChecklist } from '@/lib/agents/profile/store';
 import type { Agent } from '@/types/agents';
 
@@ -28,7 +29,7 @@ export default function AgentProfilePage() {
     }
     setAgent(found);
     setState('success');
-    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'profile.view', agentId: found.id } }));
+    track('profile.view', { properties: { agentId: found.id } });
   }, [params.agentId]);
 
   const isPublic = Boolean(params.agentId);
@@ -38,7 +39,7 @@ export default function AgentProfilePage() {
     const next = getProfileState();
     setChecklist(next.checklist);
     setCompletion(next.completion);
-    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'profile.complete_step', step: id } }));
+    track('profile.complete_step', { properties: { step: id } });
   };
 
   const shareLink = useMemo(() => `${window.location.origin}/agents/profile/${agent?.id || ''}`, [agent?.id]);

@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
+import { track } from '@/lib/analytics';
 import { addFeedback, useCxStore } from '@/lib/agents/cx/store';
 import { useSurveyStore, sendDueSurveys, recordSurveyResponse, resendSurvey } from '@/lib/agents/cx/surveys';
 import { mockAgent } from '@/lib/agents/fixtures';
@@ -31,7 +32,7 @@ export default function AgentExperienceReport() {
     setAdding(true);
     setTimeout(() => {
       addFeedback({ agentId: mockAgent.id, rating: 5, comment: 'Respuesta ultra rápida, gracias!', source: 'survey' });
-      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'cx.feedback_added', rating: 5 } }));
+      track('cx.feedback_added', { properties: { rating: 5 } });
       toast({ title: 'Feedback agregado (mock)', description: 'Persistido localmente.' });
       setAdding(false);
     }, 500);

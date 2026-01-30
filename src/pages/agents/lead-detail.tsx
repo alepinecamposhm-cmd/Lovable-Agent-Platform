@@ -43,6 +43,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
+import { track } from '@/lib/analytics';
 import {
   mockAppointments,
   mockLeadActivities,
@@ -199,8 +200,8 @@ export default function AgentLeadDetail() {
     const dotloop = integrations.find((i) => i.id === 'dotloop');
     if (!dotloop || dotloop.status !== 'connected') {
       toast({ title: 'Conecta Dotloop', description: 'Ve a Integraciones para autorizar.', action: <ToastAction altText="Integraciones" onClick={() => navigate('/agents/integrations')}>Abrir</ToastAction> });
-      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_error', integration: 'dotloop', reason: 'not_connected' } }));
-      return;
+      track('integration.action_error', { properties: { integration: 'dotloop', reason: 'not_connected' } });
+      return; 
     }
     addNotification({
       type: 'system',
@@ -209,7 +210,7 @@ export default function AgentLeadDetail() {
       actionUrl: '/agents/integrations',
     });
     toast({ title: 'Iniciada en Dotloop (mock)', description: 'Se simuló la creación de transacción.' });
-    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_start', integration: 'dotloop', leadId: lead.id } }));
+    track('integration.action_start', { properties: { integration: 'dotloop', leadId: lead.id } });
   };
 
   return (

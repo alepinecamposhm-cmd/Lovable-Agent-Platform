@@ -9,6 +9,7 @@ import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { connectIntegration, disconnectIntegration, useIntegrationStore } from '@/lib/agents/integrations/store';
 import type { IntegrationId } from '@/lib/agents/integrations/store';
 import { toast } from '@/components/ui/use-toast';
+import { track } from '@/lib/analytics';
 
 export default function AgentIntegrations() {
   const integrations = useIntegrationStore();
@@ -21,14 +22,14 @@ export default function AgentIntegrations() {
       connectIntegration(id);
       setBusy(null);
       toast({ title: 'Conectado', description: `${id} (mock OAuth) conectado` });
-      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.connect', integration: id } }));
+      track('integration.connect', { properties: { integration: id } });
     }, 700);
   };
 
   const handleDisconnect = (id: IntegrationId) => {
     disconnectIntegration(id);
     toast({ title: 'Desconectado', description: `${id} removido` });
-    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.disconnect', integration: id } }));
+    track('integration.disconnect', { properties: { integration: id } });
   };
 
   const refresh = () => {

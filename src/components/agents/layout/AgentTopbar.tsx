@@ -9,6 +9,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { track } from '@/lib/analytics';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useMemo, useState } from 'react';
@@ -76,7 +77,7 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                 )}
                 onClick={() => {
                   navigate('/agents/credits');
-                  window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'credits.low_click', balance: mockCreditAccount.balance } }));
+                  track('credits.low_click', { properties: { balance: mockCreditAccount.balance } });
                 }}
               >
                 <span className="text-xs font-semibold">{mockCreditAccount.balance} cr</span>

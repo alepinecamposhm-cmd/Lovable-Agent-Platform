@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { AlertCircle, Check, Loader2, Sparkles, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
+import { track } from '@/lib/analytics';
 import { Listing } from '@/types/agents';
 
 interface VerificationDialogProps {
@@ -87,7 +88,7 @@ export function ListingBoostDialog({ listing, open, onOpenChange, onBoost }: Boo
                 description: "Tu listing aparecerá en los primeros resultados por 7 días."
             });
             // tracking mock: listing boost
-            window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'listing.boost', listingId: listing.id, duration: '7d' } }));
+            track('listing.boost', { properties: { listingId: listing.id, duration: '7d' } });
             onOpenChange(false);
         }, 1000);
     };

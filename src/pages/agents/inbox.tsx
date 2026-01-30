@@ -312,7 +312,7 @@ export default function AgentInbox() {
       {slaLeads.length > 0 && (
         <motion.div variants={staggerItem} className="p-4 rounded-lg border bg-warning/10 text-sm flex items-center justify-between gap-3">
           <div>
-            <p className="font-medium">SLA <5m: {slaLeads.length} lead(s) sin respuesta</p>
+            <p className="font-medium">SLA &lt;5m: {slaLeads.length} lead(s) sin respuesta</p>
             <p className="text-xs text-muted-foreground">Responder ahora para mantener badge verde.</p>
           </div>
           <Button

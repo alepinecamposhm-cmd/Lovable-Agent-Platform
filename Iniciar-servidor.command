@@ -1,6 +1,6 @@
 #!/bin/bash
 cd "$(dirname "$0")"
-echo "Iniciando servidor..."
+echo "Iniciando servidor en puerto 8080..."
 echo ""
 npm run dev
 echo ""

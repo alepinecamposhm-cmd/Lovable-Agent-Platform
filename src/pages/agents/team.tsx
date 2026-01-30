@@ -5,6 +5,7 @@ import {
   Mail,
   ShieldCheck,
   ShieldHalf,
+  AlarmClock,
   PauseCircle,
   MapPin,
   UserPlus,
@@ -18,6 +19,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { useRoutingStore, addRule, deleteRule, togglePauseAgent, getPausedAgents } from '@/lib/agents/routing/store';
+import { useReminderStore, addReminderRule, deleteReminderRule, toggleReminderRule } from '@/lib/agents/reminders/store';
+import type { LeadStage } from '@/types/agents';
 
 const teamMembers = [
   { name: `${mockAgent.firstName} ${mockAgent.lastName}`, role: 'Propietario', email: mockAgent.email, id: mockAgent.id },
@@ -35,6 +38,9 @@ export default function AgentTeam() {
   const pausedAgents = getPausedAgents();
   const [newZone, setNewZone] = useState('');
   const [newAssignee, setNewAssignee] = useState(teamMembers[0].id);
+  const reminders = useReminderStore();
+  const [reminderStage, setReminderStage] = useState<LeadStage>('new');
+  const [reminderHours, setReminderHours] = useState(24);
 
   return (
     <motion.div
@@ -211,6 +217,61 @@ export default function AgentTeam() {
                   <div key={rule.id} className="flex items-center justify-between p-2 rounded border">
                     <span>{rule.zone} → {teamMembers.find(m => m.id === rule.assignToAgentId)?.name || 'Agente'}</span>
                     <Button variant="ghost" size="sm" onClick={() => deleteRule(rule.id)}>Eliminar</Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlarmClock className="h-4 w-4 text-warning" />
+                Recordatorios de equipo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="grid sm:grid-cols-3 gap-2">
+                <select
+                  className="rounded-md border px-3 py-2 text-sm"
+                  value={reminderStage}
+                  onChange={(e) => setReminderStage(e.target.value as LeadStage)}
+                >
+                  <option value="new">New</option>
+                  <option value="contacted">Contacted</option>
+                  <option value="appointment_set">Appointment Set</option>
+                </select>
+                <Input
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={reminderHours}
+                  onChange={(e) => setReminderHours(Number(e.target.value))}
+                  placeholder="Horas"
+                />
+                <Button
+                  onClick={() => addReminderRule({ stage: reminderStage, thresholdHours: reminderHours, enabled: true, label: `${reminderStage} >${reminderHours}h` })}
+                >
+                  Agregar
+                </Button>
+              </div>
+              <div className="space-y-2 text-xs">
+                {reminders.length === 0 && <p className="text-muted-foreground italic">Sin recordatorios configurados.</p>}
+                {reminders.map((rule) => (
+                  <div key={rule.id} className="flex items-center justify-between p-2 rounded border bg-muted/40">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={rule.enabled ? 'default' : 'secondary'}>{rule.stage}</Badge>
+                      <span>{rule.label}</span>
+                      <span className="text-muted-foreground">· {rule.thresholdHours}h</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => toggleReminderRule(rule.id, !rule.enabled)}>
+                        {rule.enabled ? 'Pausar' : 'Activar'}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteReminderRule(rule.id)}>
+                        Eliminar
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Search, 
@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { mockConversations, mockMessages, mockAgent } from '@/lib/agents/fixtures';
+import { mockConversations, mockMessages, mockAgent, mockLeads } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -131,9 +131,14 @@ function ConversationItem({
           )}>
             {conversation.lead?.firstName} {conversation.lead?.lastName}
           </p>
+          <div className="flex items-center gap-1">
+            {conversation.lead?.stage === 'new' && (
+              <Badge variant="outline" className="text-[10px]">SLA</Badge>
+            )}
           <span className="text-xs text-muted-foreground shrink-0 ml-2">
             {formatDistanceToNow(conversation.updatedAt, { addSuffix: false, locale: es })}
           </span>
+          </div>
         </div>
         <p className={cn(
           'text-sm truncate',
@@ -159,6 +164,7 @@ export default function AgentInbox() {
   const [onlyUnreadConv, setOnlyUnreadConv] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const slaLeads = useMemo(() => mockLeads.filter((l) => l.stage === 'new'), []);
 
   const filteredConversations = conversations.filter(conv =>
     conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -301,6 +307,27 @@ export default function AgentInbox() {
           Gestiona tus conversaciones con clientes
         </p>
       </motion.div>
+
+      {slaLeads.length > 0 && (
+        <motion.div variants={staggerItem} className="p-4 rounded-lg border bg-warning/10 text-sm flex items-center justify-between gap-3">
+          <div>
+            <p className="font-medium">SLA <5m: {slaLeads.length} lead(s) sin respuesta</p>
+            <p className="text-xs text-muted-foreground">Responder ahora para mantener badge verde.</p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const leadId = slaLeads[0].id;
+              const conv = conversations.find((c) => c.leadId === leadId);
+              if (conv) setSelectedConversation(conv);
+              window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'sla.board_click', leadId } }));
+            }}
+          >
+            Responder ahora
+          </Button>
+        </motion.div>
+      )}
 
       <motion.div 
         variants={staggerItem}

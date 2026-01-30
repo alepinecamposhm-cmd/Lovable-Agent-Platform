@@ -49,6 +49,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { matchAgent } from '@/lib/agents/routing/store';
 import { mockTeamAgents } from '@/lib/agents/fixtures';
 import { addTask } from '@/lib/agents/tasks/store';
+import { evaluateReminders } from '@/lib/agents/reminders/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -230,6 +231,30 @@ export default function AgentLeads() {
       .then((res) => res.json())
       .then((data) => setLeads(data));
   }, []);
+
+  useEffect(() => {
+    const hits = evaluateReminders(leads);
+    hits.forEach((hit) => {
+      const lead = leads.find((l) => l.id === hit.leadId);
+      if (!lead) return;
+      addTask({
+        title: `Recordatorio: mover ${lead.firstName}`,
+        leadId: lead.id,
+        priority: 'high',
+        dueAt: new Date(),
+        origin: 'auto',
+        originKey: `reminder-${hit.ruleId}-${lead.id}`,
+        tags: ['Reminder'],
+      });
+      addNotification({
+        type: 'task',
+        title: 'Recordatorio de equipo',
+        body: `${lead.firstName} en ${hit.stage} supera umbral`,
+        actionUrl: `/agents/leads/${lead.id}`,
+      });
+      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'reminder.fired', leadId: lead.id, ruleId: hit.ruleId } }));
+    });
+  }, [leads]);
 
   useEffect(() => {
     const stale = leads.filter(

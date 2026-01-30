@@ -31,8 +31,22 @@ import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useEffect } from 'react';
+
+// #region agent log
+const DEBUG_INGEST = 'http://127.0.0.1:7242/ingest/09986fe5-9bd4-4263-a66c-7f830704a56d';
+function logToDebug(p: Record<string, unknown>) {
+  fetch(DEBUG_INGEST, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...p, timestamp: Date.now(), sessionId: 'debug-session' }) }).catch(() => {});
+}
+// #endregion
 
 export default function AgentOverview() {
+  // #region agent log
+  // useEffect(() => {
+  //   logToDebug({ hypothesisId: 'H1', location: 'overview.tsx:mount', message: 'AgentOverview mounted', data: {} });
+  // }, []);
+  // #endregion
+
   const todayAppointments = mockAppointments.filter(
     apt => format(apt.scheduledAt, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ||
            format(apt.scheduledAt, 'yyyy-MM-dd') === '2026-01-29'

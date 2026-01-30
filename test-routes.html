@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Routing Fix</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-links {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin: 30px 0;
+        }
+        .test-link {
+            padding: 15px 20px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #111827;
+            border: 2px solid #e5e7eb;
+            transition: all 0.2s;
+        }
+        .test-link:hover {
+            background: #e5e7eb;
+            border-color: #d1d5db;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background: #dbeafe;
+            border: 2px solid #3b82f6;
+        }
+        code {
+            background: #f9fafb;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Test Infinite Loop Fix</h1>
+    
+    <div class="status">
+        <strong>Status:</strong> Dev server should be running on <code>http://localhost:8080</code>
+    </div>
+
+    <h2>Rutas problemáticas (ANTES tenían "Maximum update depth exceeded"):</h2>
+    
+    <div class="test-links">
+        <a href="http://localhost:8080/agents/leads" class="test-link" target="_blank">
+            ✅ Test: /agents/leads
+            <div style="font-size: 0.9em; color: #6b7280; margin-top: 5px;">
+                Debe cargar el dashboard de leads sin errores
+            </div>
+        </a>
+        
+        <a href="http://localhost:8080/agents/team" class="test-link" target="_blank">
+            ✅ Test: /agents/team
+            <div style="font-size: 0.9em; color: #6b7280; margin-top: 5px;">
+                Debe cargar la página de equipo sin errores
+            </div>
+        </a>
+
+        <a href="http://localhost:8080/agents/overview" class="test-link" target="_blank">
+            ✅ Test: /agents/overview
+            <div style="font-size: 0.9em; color: #6b7280; margin-top: 5px;">
+                Control: Esta ruta siempre funcionó
+            </div>
+        </a>
+    </div>
+
+    <h3>Verificación:</h3>
+    <ol>
+        <li>Abre las Developer Tools (F12 o Cmd+Option+I)</li>
+        <li>Ve a la pestaña Console</li>
+        <li>Haz clic en cada link arriba</li>
+        <li>Verifica que NO aparezca el error: <code>"Maximum update depth exceeded"</code></li>
+        <li>Verifica que las páginas se rendericen correctamente</li>
+    </ol>
+
+    <h3>📝 Fix aplicado:</h3>
+    <p><strong>Archivo:</strong> <code>src/lib/agents/notifications/store.ts</code></p>
+    <p><strong>Problema:</strong> <code>useSyncExternalStore</code> retornaba un nuevo objeto en cada render</p>
+    <p><strong>Solución:</strong> Cachear el snapshot y solo retornar nuevo objeto cuando los datos realmente cambien</p>
+    
+    <details style="margin-top: 20px;">
+        <summary style="cursor: pointer; font-weight: bold;">Ver diff del fix</summary>
+        <pre style="background: #f9fafb; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 0.85em;">
+// Agregado: Cache para prevenir re-renders infinitos
+let cachedSnapshot = null;
+
+function getSnapshot() {
+  const newNotifications = list();
+  const newUnread = getUnreadCount();
+  const newQuietHours = getQuietHoursState();
+
+  // Solo crear nuevo objeto si los datos realmente cambiaron
+  if (
+    !cachedSnapshot ||
+    notifications !== cachedSnapshot._rawNotifications ||
+    cachedSnapshot.unread !== newUnread ||
+    quietHours !== cachedSnapshot._rawQuietHours
+  ) {
+    cachedSnapshot = {
+      notifications: newNotifications,
+      unread: newUnread,
+      quietHours: newQuietHours,
+      _rawNotifications: notifications,
+      _rawQuietHours: quietHours,
+    };
+  }
+
+  return cachedSnapshot;
+}
+
+// Modificado: emit() invalida el cache
+function emit() {
+  cachedSnapshot = null; // ← Nuevo
+  listeners.forEach((l) => l());
+}
+
+// Modificado: useNotificationStore usa getSnapshot estable
+export function useNotificationStore() {
+  return useSyncExternalStore(
+    subscribe,
+    getSnapshot,  // ← Antes: () => ({ ... })
+    getSnapshot
+  );
+}
+        </pre>
+    </details>
+</body>
+</html>

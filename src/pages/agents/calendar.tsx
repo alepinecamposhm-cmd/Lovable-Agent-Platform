@@ -424,14 +424,32 @@ export default function AgentCalendar() {
                       {statusConfig[appointment.status].label}
                     </Badge>
                   </div>
-                  <div className="flex gap-2 mt-3">
-                    <Button size="sm" variant="outline" onClick={() => handleConfirm(appointment.id)} aria-label="Confirmar cita lista">
+                  <div className="grid grid-cols-3 gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => handleConfirm(appointment.id)}
+                      aria-label="Confirmar cita lista"
+                    >
                       <Check className="h-4 w-4 mr-1" /> Confirmar
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => openReschedule(appointment)} aria-label="Reprogramar cita lista">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => openReschedule(appointment)}
+                      aria-label="Reprogramar cita lista"
+                    >
                       <Pencil className="h-4 w-4 mr-1" /> Reprogramar
                     </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelTarget(appointment)} aria-label="Cancelar cita lista">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="w-full text-destructive"
+                      onClick={() => setCancelTarget(appointment)}
+                      aria-label="Cancelar cita lista"
+                    >
                       <X className="h-4 w-4 mr-1" /> Cancelar
                     </Button>
                   </div>

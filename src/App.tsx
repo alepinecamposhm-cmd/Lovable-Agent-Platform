@@ -41,6 +41,9 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <div className="fixed right-3 top-3 z-50 pointer-events-none">
+        <span className="inline-block bg-primary text-primary-foreground text-xs px-2 py-1 rounded opacity-95">DEV: {import.meta.env.VITE_AGENT_NAME || 'local'}</span>
+      </div>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />

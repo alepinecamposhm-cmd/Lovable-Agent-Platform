@@ -10,10 +10,17 @@ import NotFound from "./pages/NotFound";
 import { AgentLayout } from "./components/agents/layout/AgentLayout";
 import AgentOverview from "./pages/agents/overview";
 import AgentLeads from "./pages/agents/leads";
+import AgentLeadDetail from "./pages/agents/lead-detail";
 import AgentInbox from "./pages/agents/inbox";
 import AgentCalendar from "./pages/agents/calendar";
 import AgentListings from "./pages/agents/listings";
+import AgentListingDetail from "./pages/agents/listing-detail";
 import AgentCredits from "./pages/agents/credits";
+import AgentReports from "./pages/agents/reports";
+import AgentTeam from "./pages/agents/team";
+import AgentSettings from "./pages/agents/settings";
+import AgentRoadmap from "./pages/agents/roadmap";
+import AgentNotifications from "./pages/agents/notifications";
 
 const queryClient = new QueryClient();
 
@@ -31,13 +38,17 @@ const App = () => (
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<AgentOverview />} />
             <Route path="leads" element={<AgentLeads />} />
+            <Route path="leads/:leadId" element={<AgentLeadDetail />} />
             <Route path="inbox" element={<AgentInbox />} />
             <Route path="calendar" element={<AgentCalendar />} />
             <Route path="listings" element={<AgentListings />} />
+            <Route path="listings/:listingId" element={<AgentListingDetail />} />
             <Route path="credits" element={<AgentCredits />} />
-            <Route path="team" element={<AgentOverview />} />
-            <Route path="reports" element={<AgentOverview />} />
-            <Route path="settings" element={<AgentOverview />} />
+            <Route path="team" element={<AgentTeam />} />
+            <Route path="reports" element={<AgentReports />} />
+            <Route path="roadmap" element={<AgentRoadmap />} />
+            <Route path="notifications" element={<AgentNotifications />} />
+            <Route path="settings" element={<AgentSettings />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

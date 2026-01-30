@@ -48,6 +48,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { matchAgent } from '@/lib/agents/routing/store';
 import { mockTeamAgents } from '@/lib/agents/fixtures';
+import { addTask } from '@/lib/agents/tasks/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -219,12 +220,52 @@ export default function AgentLeads() {
   const [onlyNew, setOnlyNew] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const staleCount = useMemo(
+    () => leads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
+    [leads]
+  );
 
   useEffect(() => {
     fetch('/api/leads')
       .then((res) => res.json())
       .then((data) => setLeads(data));
   }, []);
+
+  useEffect(() => {
+    const stale = leads.filter(
+      (lead) =>
+        lead.stage === 'new' &&
+        differenceInHours(new Date(), lead.createdAt) >= 2
+    );
+    if (stale.length > 0) {
+      const already = localStorage.getItem('agenthub_sla_notified') === '1';
+      if (!already) {
+        const lead = stale[0];
+        addTask({
+          title: `Responder a ${lead.firstName}`,
+          leadId: lead.id,
+          dueAt: new Date(),
+          priority: 'high',
+          origin: 'auto',
+          originKey: `sla-${lead.id}`,
+          tags: ['SLA'],
+        });
+        addNotification({
+          type: 'task',
+          title: 'Nudge SLA: Lead sin respuesta',
+          body: `${lead.firstName} lleva >2h en New`,
+          actionUrl: `/agents/leads/${lead.id}`,
+        });
+        toast({
+          title: 'Nudge SLA',
+          description: `${lead.firstName} espera respuesta. Creamos una tarea.`,
+          action: <ToastAction altText="Abrir lead" onClick={() => window.location.assign(`/agents/leads/${lead.id}`)}>Ver lead</ToastAction>,
+        });
+        window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'sla.nudge_shown', leadId: lead.id } }));
+        localStorage.setItem('agenthub_sla_notified', '1');
+      }
+    }
+  }, [leads]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -378,6 +419,16 @@ export default function AgentLeads() {
           Nuevo Lead
         </Button>
       </motion.div>
+
+      {staleCount > 0 && (
+        <motion.div variants={staggerItem} className="p-4 rounded-lg border bg-warning/10 text-sm flex items-center justify-between">
+          <div>
+            <p className="font-medium">Nudge SLA: {staleCount} lead(s) sin respuesta &gt; 2h</p>
+            <p className="text-muted-foreground text-xs">Se creó tarea automática y notificación.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => window.location.assign('/agents/tasks')}>Ir a Tareas</Button>
+        </motion.div>
+      )}
 
       {/* Filters */}
       <motion.div variants={staggerItem} className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

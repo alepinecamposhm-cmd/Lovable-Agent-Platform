@@ -235,6 +235,42 @@ export default function AgentInbox() {
     }, 700);
   };
 
+  const handleAttachFile = (file: File) => {
+    if (!selectedConversation) return;
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = reader.result as string;
+      const now = new Date();
+      const attachment = {
+        id: `att-${Date.now()}`,
+        url,
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+      };
+      const outgoing: Message = {
+        id: `msg-${Date.now()}`,
+        conversationId: selectedConversation.id,
+        senderId: mockAgent.id,
+        senderType: 'agent',
+        content: 'Adjunto',
+        contentType: 'file',
+        attachments: [attachment],
+        status: 'sent',
+        createdAt: now,
+      };
+      setMessages((prev) => [...prev, outgoing]);
+      setUploading(false);
+      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'chat.attachment_upload', type: file.type } }));
+    };
+    reader.onerror = () => {
+      setUploading(false);
+      toast({ title: 'Error al adjuntar', description: 'No pudimos leer el archivo', variant: 'destructive' });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleTemplateSelect = (content: string) => {
     setMessageInput(content);
     setShowTemplates(false);
@@ -398,6 +434,17 @@ export default function AgentInbox() {
                 )}
                 <div className="flex gap-2">
                   <div className="flex-1 relative">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleAttachFile(file);
+                        if (e.target) e.target.value = '';
+                      }}
+                    />
                     <Textarea
                       placeholder="Escribe un mensaje..."
                       value={messageInput}
@@ -420,18 +467,19 @@ export default function AgentInbox() {
                       >
                         <span className="text-xs">📝</span>
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => fileInputRef.current?.click()}>
                         <Paperclip className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => fileInputRef.current?.click()}>
                         <Image className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-                  <Button onClick={handleSendMessage} size="icon" className="shrink-0">
+                  <Button onClick={handleSendMessage} size="icon" className="shrink-0" disabled={uploading}>
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
+                {uploading && <p className="text-xs text-muted-foreground mt-2">Subiendo adjunto…</p>}
               </div>
             </>
           ) : (

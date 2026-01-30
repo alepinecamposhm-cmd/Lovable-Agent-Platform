@@ -29,6 +29,7 @@ import { toast } from '@/components/ui/use-toast';
 import { useListingStore, listListingActivities } from '@/lib/agents/listings/store';
 import { addAppointment } from '@/lib/agents/appointments/store';
 import { add as addNotification } from '@/lib/agents/notifications/store';
+import { listIntegrations } from '@/lib/agents/integrations/store';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
@@ -162,6 +163,38 @@ export default function AgentListingDetail() {
       setScheduling(false);
       toast({ title: 'Error', description: 'No se pudo crear el open house', variant: 'destructive' });
     }
+  };
+
+  const handleShowingTime = () => {
+    if (!listing) return;
+    const integrations = listIntegrations();
+    const st = integrations.find((i) => i.id === 'showingtime');
+    if (!st || st.status !== 'connected') {
+      toast({ title: 'Conecta ShowingTime', description: 'Ve a Integraciones para autorizar.', variant: 'destructive' });
+      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_error', integration: 'showingtime', reason: 'not_connected' } }));
+      return;
+    }
+    const date = new Date();
+    date.setHours(date.getHours() + 48);
+    addAppointment({
+      scheduledAt: date,
+      duration: 30,
+      leadId: `showing-${listing.id}`,
+      agentId: listing.agentId,
+      listingId: listing.id,
+      listing,
+      type: 'consultation',
+      status: 'pending',
+      location: listing.address.street,
+    });
+    addNotification({
+      type: 'appointment',
+      title: 'Visita en ShowingTime (mock)',
+      body: listing.address.street,
+      actionUrl: '/agents/calendar',
+    });
+    toast({ title: 'Cita creada (mock)', description: 'Mostrada en Calendario.' });
+    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_start', integration: 'showingtime', listingId: listing.id } }));
   };
 
   useEffect(() => {

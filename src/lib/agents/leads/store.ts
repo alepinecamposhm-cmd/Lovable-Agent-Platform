@@ -19,6 +19,7 @@ function load(): Lead[] {
       lastActivityAt: lead.lastActivityAt ? parseISO(lead.lastActivityAt) : undefined,
       nextFollowUpAt: lead.nextFollowUpAt ? parseISO(lead.nextFollowUpAt) : undefined,
       closedAt: lead.closedAt ? parseISO(lead.closedAt) : undefined,
+      tags: lead.tags || [],
     }));
     return parsed;
   } catch (e) {
@@ -37,6 +38,7 @@ function save(data: Lead[]) {
     lastActivityAt: lead.lastActivityAt ? formatISO(lead.lastActivityAt) : undefined,
     nextFollowUpAt: lead.nextFollowUpAt ? formatISO(lead.nextFollowUpAt) : undefined,
     closedAt: lead.closedAt ? formatISO(lead.closedAt) : undefined,
+    tags: lead.tags || [],
   }));
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
 }
@@ -97,6 +99,7 @@ export function addLead(input: LeadInput): Lead {
     budgetMax: input.budgetMax,
     preferredZones: input.preferredZones,
     notes: input.notes,
+    tags: input.tags || [],
     lastContactedAt: input.lastContactedAt,
     lastActivityAt: input.lastActivityAt,
     nextFollowUpAt: input.nextFollowUpAt,
@@ -111,6 +114,18 @@ export function addLead(input: LeadInput): Lead {
   save(leads);
   emit();
   return newLead;
+}
+
+export function updateLeadNotes(id: string, notes: string) {
+  leads = leads.map((lead) => (lead.id === id ? { ...lead, notes, updatedAt: new Date() } : lead));
+  save(leads);
+  emit();
+}
+
+export function updateLeadTags(id: string, tags: string[]) {
+  leads = leads.map((lead) => (lead.id === id ? { ...lead, tags, updatedAt: new Date() } : lead));
+  save(leads);
+  emit();
 }
 
 export function useLeadStore() {

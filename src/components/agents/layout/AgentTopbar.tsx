@@ -1,4 +1,5 @@
 import { Bell, Search, Command } from 'lucide-react';
+import { AlarmClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -19,6 +20,7 @@ import {
   useNotificationStore,
   isQuietHoursNow,
 } from '@/lib/agents/notifications/store';
+import { useTaskStore } from '@/lib/agents/tasks/store';
 import { useNavigate } from 'react-router-dom';
 
 interface AgentTopbarProps {
@@ -29,6 +31,7 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const navigate = useNavigate();
   const { notifications, unread, quietHours } = useNotificationStore();
+  const { pending: pendingTasks } = useTaskStore();
   const quietLabel = useMemo(() => {
     if (!quietHours.enabled) return 'Notificaciones activas';
     return `Silenciado ${quietHours.start}–${quietHours.end}`;
@@ -61,6 +64,36 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
 
         {/* Right side actions */}
         <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                onClick={() => navigate('/agents/tasks')}
+                aria-label="Ver tareas pendientes"
+              >
+                <AlarmClock className="h-5 w-5" />
+                <AnimatePresence>
+                  {pendingTasks > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      exit={{ scale: 0 }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                      className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground"
+                    >
+                      {pendingTasks}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {pendingTasks > 0 ? `${pendingTasks} tareas pendientes` : 'Sin tareas pendientes'}
+            </TooltipContent>
+          </Tooltip>
+
           {/* Notifications */}
           <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
             <PopoverTrigger asChild>

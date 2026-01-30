@@ -25,6 +25,8 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Conversation, Message } from '@/types/agents';
 import { add as addNotification, markRead as markNotificationRead, useNotificationStore } from '@/lib/agents/notifications/store';
+import { addTask } from '@/lib/agents/tasks/store';
+import { toast } from '@/components/ui/use-toast';
 
 const templates = [
   { id: 't1', label: 'Saludo inicial', content: '¡Hola! Gracias por tu interés. Estoy aquí para ayudarte a encontrar tu propiedad ideal.' },
@@ -318,9 +320,29 @@ export default function AgentInbox() {
                     </p>
                   </div>
                 </div>
-                <Button variant="ghost" size="icon">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedConversation) return;
+                      const task = addTask({
+                        title: `Follow-up con ${selectedConversation.lead?.firstName || 'lead'}`,
+                        leadId: selectedConversation.leadId,
+                        dueAt: new Date(),
+                        priority: 'medium',
+                        tags: ['Inbox'],
+                        origin: 'manual',
+                      });
+                      toast({ title: 'Tarea creada', description: task.title });
+                    }}
+                  >
+                    Crear tarea
+                  </Button>
+                  <Button variant="ghost" size="icon">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               {/* Messages */}

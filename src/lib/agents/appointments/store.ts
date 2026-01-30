@@ -37,6 +37,7 @@ function save(data: Appointment[]) {
 let appointments = load();
 
 function emit() {
+  cachedSnapshot = null; // Invalidate cache to force new snapshot on next read
   listeners.forEach((l) => l());
 }
 

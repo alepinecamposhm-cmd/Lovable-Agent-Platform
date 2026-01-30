@@ -22,6 +22,7 @@ import AgentTeam from "./pages/agents/team";
 import AgentSettings from "./pages/agents/settings";
 import AgentRoadmap from "./pages/agents/roadmap";
 import AgentNotifications from "./pages/agents/notifications";
+import AgentTasks from "./pages/agents/tasks";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const App = () => (
             <Route path="reports" element={<AgentReports />} />
             <Route path="roadmap" element={<AgentRoadmap />} />
             <Route path="notifications" element={<AgentNotifications />} />
+            <Route path="tasks" element={<AgentTasks />} />
             <Route path="settings" element={<AgentSettings />} />
           </Route>
 

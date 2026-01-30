@@ -45,15 +45,15 @@ import { toast } from '@/components/ui/use-toast';
 import {
   mockAppointments,
   mockLeadActivities,
-  mockTasks,
 } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Lead, LeadActivity, LeadStage } from '@/types/agents';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useLeadStore, updateLeadStage } from '@/lib/agents/leads/store';
+import { useLeadStore, updateLeadNotes, updateLeadStage, updateLeadTags } from '@/lib/agents/leads/store';
 import { add as addNotification } from '@/lib/agents/notifications/store';
+import { addTask, completeTask, undoCompleteTask, useTaskStore } from '@/lib/agents/tasks/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string }> = {
   new: { label: 'New', color: 'bg-blue-500' },
@@ -89,14 +89,22 @@ export default function AgentLeadDetail() {
   const params = useParams();
   const navigate = useNavigate();
   const { leads } = useLeadStore();
+  const { tasks } = useTaskStore();
   const lead = leads.find((l) => l.id === params.leadId);
   const [stage, setStage] = useState<LeadStage>(lead?.stage ?? 'new');
-  const [noteDraft, setNoteDraft] = useState('');
+  const [noteDraft, setNoteDraft] = useState(lead?.notes || '');
   const [taskDraft, setTaskDraft] = useState('');
+  const [tagDraft, setTagDraft] = useState('');
 
   useEffect(() => {
     if (lead) setStage(lead.stage);
   }, [lead?.stage]);
+
+  useEffect(() => {
+    if (lead) {
+      setNoteDraft(lead.notes || '');
+    }
+  }, [lead?.id]);
 
   if (!lead) {
     return (
@@ -123,8 +131,8 @@ export default function AgentLeadDetail() {
   );
 
   const leadTasks = useMemo(
-    () => mockTasks.filter((t) => t.leadId === lead.id),
-    [lead.id]
+    () => tasks.filter((t) => t.leadId === lead.id),
+    [tasks, lead.id]
   );
 
   const leadAppointments = useMemo(
@@ -153,20 +161,35 @@ export default function AgentLeadDetail() {
 
   const handleAddNote = () => {
     if (!noteDraft.trim()) return;
+    updateLeadNotes(lead.id, noteDraft.trim());
     toast({
       title: 'Nota agregada',
-      description: 'Se guardó la nota interna (solo vista del agente).',
+      description: 'Guardamos la nota en el lead.',
     });
-    setNoteDraft('');
   };
 
   const handleAddTask = () => {
     if (!taskDraft.trim()) return;
+    addTask({
+      title: taskDraft.trim(),
+      leadId: lead.id,
+      dueAt: new Date(),
+      priority: 'medium',
+      tags: ['Lead'],
+    });
     toast({
       title: 'Tarea creada',
-      description: 'La tarea se agregó al backlog y se notificará en Agenda.',
+      description: 'Se agregó al backlog y verás el badge en Tareas.',
     });
     setTaskDraft('');
+  };
+
+  const handleAddTag = () => {
+    if (!tagDraft.trim()) return;
+    const nextTags = Array.from(new Set([...(lead.tags || []), tagDraft.trim()]));
+    updateLeadTags(lead.id, nextTags);
+    setTagDraft('');
+    toast({ title: 'Etiqueta agregada', description: nextTags.join(', ') });
   };
 
   return (
@@ -365,21 +388,34 @@ export default function AgentLeadDetail() {
                     <CardTitle className="text-base">Tareas</CardTitle>
                     <p className="text-sm text-muted-foreground">Seguimientos y recordatorios</p>
                   </div>
-                  <Badge variant="secondary">{leadTasks.length}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{leadTasks.length}</Badge>
+                    <Button size="sm" variant="ghost" asChild>
+                      <Link to="/agents/tasks" className="text-xs">Ir a Tareas</Link>
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {leadTasks.map((task) => (
                     <div
                       key={task.id}
-                      className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border border-dashed"
+                      className={cn(
+                        'flex items-start gap-3 p-3 rounded-lg border bg-card shadow-sm transition-all',
+                        task.status === 'completed' && 'opacity-60 line-through'
+                      )}
                     >
-                      <div
-                        className={cn(
-                          'h-2 w-2 rounded-full mt-1.5',
-                          task.priority === 'high' && 'bg-destructive',
-                          task.priority === 'medium' && 'bg-warning',
-                          task.priority === 'low' && 'bg-muted-foreground'
-                        )}
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 accent-primary"
+                        checked={task.status === 'completed'}
+                        onChange={() => {
+                          if (task.status === 'completed') {
+                            undoCompleteTask(task.id);
+                          } else {
+                            completeTask(task.id);
+                          }
+                        }}
+                        aria-label="Completar tarea"
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium">{task.title}</p>
@@ -388,6 +424,15 @@ export default function AgentLeadDetail() {
                             ? `Vence ${format(task.dueAt, "d MMM, HH:mm", { locale: es })}`
                             : 'Sin fecha'}
                         </p>
+                        {task.tags?.length ? (
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {task.tags.slice(0, 3).map((tag) => (
+                              <Badge key={tag} variant="outline" className="text-[10px]">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                       <Badge variant="outline" className="text-[10px]">
                         {task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Media' : 'Baja'}
@@ -427,13 +472,36 @@ export default function AgentLeadDetail() {
                     onChange={(e) => setNoteDraft(e.target.value)}
                     className="min-h-[120px]"
                   />
-                  <div className="flex justify-end">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-muted-foreground">
+                      Autosave mock: guarda localmente y mantiene consistencia visual.
+                    </div>
                     <Button onClick={handleAddNote}>Guardar nota</Button>
                   </div>
                   <Separator />
-                  <p className="text-xs text-muted-foreground">
-                    Las notas se sincronizan con la actividad y muestran feedback inmediato.
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Etiquetas</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(lead.tags || []).length > 0 ? (
+                        lead.tags!.map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-[11px]">
+                            {tag}
+                          </Badge>
+                        ))
+                      ) : (
+                        <p className="text-xs text-muted-foreground">Sin etiquetas</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Agregar etiqueta (ej. VIP)"
+                        value={tagDraft}
+                        onChange={(e) => setTagDraft(e.target.value)}
+                        aria-label="Nueva etiqueta"
+                      />
+                      <Button variant="outline" onClick={handleAddTag}>Añadir</Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

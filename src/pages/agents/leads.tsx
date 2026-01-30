@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext,
@@ -43,7 +43,6 @@ import { Link } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { differenceInHours, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { addLead, updateLeadStage, useLeadStore } from '@/lib/agents/leads/store';
 import { add as addNotification, useNotificationStore } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -210,7 +209,7 @@ function StageColumn({ stage, leads, unreadIds }: StageColumnProps) {
 }
 
 export default function AgentLeads() {
-  const { leads } = useLeadStore();
+  const [leads, setLeads] = useState<Lead[]>([]);
   const { notifications } = useNotificationStore();
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,6 +217,12 @@ export default function AgentLeads() {
   const [onlyNew, setOnlyNew] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/leads')
+      .then((res) => res.json())
+      .then((data) => setLeads(data));
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -276,16 +281,24 @@ export default function AgentLeads() {
 
     if (!targetStage) return;
 
-    const previous = updateLeadStage(activeLeadId, targetStage);
-    if (!previous || previous.stage === targetStage) return;
+    const lead = leads.find(l => l.id === activeLeadId);
+    if (!lead || lead.stage === targetStage) return;
+
+    const previousStage = lead.stage;
+    
+    // TODO: replace with API call
+    setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: targetStage! } : l));
 
     const stageLabel = stageConfig[targetStage].label;
     toast({
       title: `Lead movido a ${stageLabel}`,
-      description: `${previous.firstName} ahora está en ${stageLabel}.`,
+      description: `${lead.firstName} ahora está en ${stageLabel}.`,
       duration: 5000,
       action: (
-        <ToastAction altText="Deshacer" onClick={() => updateLeadStage(activeLeadId, previous.stage)}>
+        <ToastAction altText="Deshacer" onClick={() => {
+          // TODO: replace with API call
+          setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: previousStage } : l));
+        }}>
           Deshacer
         </ToastAction>
       ),
@@ -294,7 +307,7 @@ export default function AgentLeads() {
     addNotification({
       type: targetStage === 'appointment_set' ? 'appointment' : 'lead',
       title: targetStage === 'appointment_set' ? 'Cita programada' : `Lead movido a ${stageLabel}`,
-      body: `${previous.firstName} ${previous.lastName || ''}`.trim(),
+      body: `${lead.firstName} ${lead.lastName || ''}`.trim(),
       actionUrl: `/agents/leads/${activeLeadId}`,
     });
 
@@ -305,14 +318,22 @@ export default function AgentLeads() {
 
   const handleAddLead = () => {
     const random = Math.floor(Math.random() * 900) + 100;
-    const newLead = addLead({
+    const newLead: Lead = {
+      id: `lead-${Date.now()}`,
+      agentId: 'agent-1',
       firstName: `Lead ${random}`,
       lastName: 'Demo',
       stage: 'new',
       interestedIn: 'buy',
       source: 'marketplace',
       temperature: 'warm',
-    });
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      conversationId: `conv-${Date.now()}`,
+    };
+    // TODO: replace with API call
+    setLeads(prev => [newLead, ...prev]);
+
     toast({
       title: 'Lead creado',
       description: `${newLead.firstName} añadido al pipeline (New).`,

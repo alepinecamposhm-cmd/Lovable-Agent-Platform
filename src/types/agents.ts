@@ -195,7 +195,7 @@ export interface Appointment {
   completedAt?: Date;
 }
 
-export type AppointmentType = 'showing' | 'consultation' | 'listing_presentation' | 'closing';
+export type AppointmentType = 'showing' | 'consultation' | 'listing_presentation' | 'closing' | 'open_house';
 export type AppointmentStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
 
 // ============ LISTINGS ============

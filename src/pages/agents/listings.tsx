@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  LayoutGrid, 
+import {
+  Plus,
+  Search,
+  Filter,
+  LayoutGrid,
   List,
   Eye,
   Heart,
@@ -17,19 +17,20 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { mockListings } from '@/lib/agents/fixtures';
+import { useListingStore } from '@/lib/agents/listings/store';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
@@ -52,143 +53,175 @@ const verificationConfig: Record<VerificationStatus, { icon: typeof CheckCircle;
   rejected: { icon: AlertCircle, color: 'text-destructive' },
 };
 
+import { ListingVerificationDialog, ListingBoostDialog } from '@/components/agents/listings/ListingActionDialogs';
+
 function ListingCard({ listing }: { listing: Listing }) {
   const status = statusConfig[listing.status];
   const verification = verificationConfig[listing.verificationStatus];
   const VerificationIcon = verification.icon;
 
+  const [showVerify, setShowVerify] = useState(false);
+  const [showBoost, setShowBoost] = useState(false);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -4 }}
-      className="group"
-    >
-      <Card className="overflow-hidden">
-        <div className="relative aspect-[4/3]">
-          {listing.media[0] ? (
-            <img
-              src={listing.media[0].url}
-              alt={listing.address.street}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            />
-          ) : (
-            <div className="w-full h-full bg-muted flex items-center justify-center">
-              <Square className="h-8 w-8 text-muted-foreground" />
-            </div>
-          )}
-          
-          <div className="absolute top-2 left-2 flex gap-1">
-            <Badge className={status.color}>
-              {status.label}
-            </Badge>
-            {listing.verificationStatus === 'verified' && (
-              <Badge className="bg-success text-success-foreground">
-                <CheckCircle className="h-3 w-3 mr-1" />
-                Verificado
+    <>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        whileHover={{ y: -4 }}
+        className="group"
+      >
+        <Card className="overflow-hidden">
+          <div className="relative aspect-[4/3]">
+            {listing.media[0] ? (
+              <img
+                src={listing.media[0].url}
+                alt={listing.address.street}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              />
+            ) : (
+              <div className="w-full h-full bg-muted flex items-center justify-center">
+                <Square className="h-8 w-8 text-muted-foreground" />
+              </div>
+            )}
+
+            <div className="absolute top-2 left-2 flex gap-1">
+              <Badge className={status.color}>
+                {status.label}
               </Badge>
-            )}
-          </div>
-
-          <div className="absolute top-2 right-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="secondary" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem>Editar</DropdownMenuItem>
-                <DropdownMenuItem>Pausar</DropdownMenuItem>
-                <DropdownMenuItem>Boost</DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive">Archivar</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-            <p className="text-white font-bold text-lg">
-              ${listing.price.toLocaleString()} 
-              {listing.listingType === 'rent' && <span className="text-sm font-normal">/mes</span>}
-            </p>
-          </div>
-        </div>
-
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <MapPin className="h-3 w-3" />
-              <span className="truncate">{listing.address.street}, {listing.address.city}</span>
+              {listing.verificationStatus === 'verified' && (
+                <Badge className="bg-success text-success-foreground">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Verificado
+                </Badge>
+              )}
             </div>
-            <VerificationIcon className={cn('h-4 w-4 shrink-0', verification.color)} />
-          </div>
 
-          <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-            {listing.bedrooms && (
-              <div className="flex items-center gap-1">
-                <Bed className="h-3.5 w-3.5" />
-                <span>{listing.bedrooms}</span>
-              </div>
-            )}
-            {listing.bathrooms && (
-              <div className="flex items-center gap-1">
-                <Bath className="h-3.5 w-3.5" />
-                <span>{listing.bathrooms}</span>
-              </div>
-            )}
-            {listing.squareFeet && (
-              <div className="flex items-center gap-1">
-                <Square className="h-3.5 w-3.5" />
-                <span>{listing.squareFeet} m²</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between pt-3 border-t">
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Eye className="h-3 w-3" />
-                <span>{listing.viewCount}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Heart className="h-3 w-3" />
-                <span>{listing.saveCount}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <MessageSquare className="h-3 w-3" />
-                <span>{listing.inquiryCount}</span>
-              </div>
+            <div className="absolute top-2 right-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="secondary" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem>Editar</DropdownMenuItem>
+                  {listing.verificationStatus !== 'verified' && (
+                    <DropdownMenuItem onClick={() => setShowVerify(true)}>
+                      Solicitar verificación
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => setShowBoost(true)}>
+                    <Sparkles className="h-3 w-3 mr-2 text-warning" />
+                    Destacar (Boost)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>Pausar</DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive">Archivar</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            <Button variant="ghost" size="sm" asChild>
-              <Link to={`/agents/listings/${listing.id}`}>
-                Ver más
-              </Link>
-            </Button>
+
+            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-3">
+              <p className="text-white font-bold text-lg">
+                ${listing.price.toLocaleString()}
+                {listing.listingType === 'rent' && <span className="text-sm font-normal">/mes</span>}
+              </p>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <MapPin className="h-3 w-3" />
+                <span className="truncate">{listing.address.street}, {listing.address.city}</span>
+              </div>
+              <VerificationIcon className={cn('h-4 w-4 shrink-0', verification.color)} />
+            </div>
+
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
+              {listing.bedrooms && (
+                <div className="flex items-center gap-1">
+                  <Bed className="h-3.5 w-3.5" />
+                  <span>{listing.bedrooms}</span>
+                </div>
+              )}
+              {listing.bathrooms && (
+                <div className="flex items-center gap-1">
+                  <Bath className="h-3.5 w-3.5" />
+                  <span>{listing.bathrooms}</span>
+                </div>
+              )}
+              {listing.squareFeet && (
+                <div className="flex items-center gap-1">
+                  <Square className="h-3.5 w-3.5" />
+                  <span>{listing.squareFeet} m²</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Eye className="h-3 w-3" />
+                  <span>{listing.viewCount}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Heart className="h-3 w-3" />
+                  <span>{listing.saveCount}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3" />
+                  <span>{listing.inquiryCount}</span>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to={`/agents/listings/${listing.id}`}>
+                  Ver más
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      <ListingVerificationDialog
+        listing={listing}
+        open={showVerify}
+        onOpenChange={setShowVerify}
+        onVerify={() => {/* Update local state or re-fetch */ }}
+      />
+
+      <ListingBoostDialog
+        listing={listing}
+        open={showBoost}
+        onOpenChange={setShowBoost}
+        onBoost={() => {/* Update local state or re-fetch */ }}
+      />
+    </>
   );
 }
 
 export default function AgentListings() {
+  const { listings } = useListingStore();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ListingStatus | 'all'>('all');
 
-  const filteredListings = mockListings.filter(listing => {
-    const matchesSearch = 
-      listing.address.street.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      listing.address.city.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || listing.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredListings = useMemo(() => {
+    return listings.filter(listing => {
+      const matchesSearch =
+        listing.address.street.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        listing.address.city.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || listing.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [listings, searchQuery, statusFilter]);
 
   const stats = {
-    total: mockListings.length,
-    active: mockListings.filter(l => l.status === 'active').length,
-    views: mockListings.reduce((sum, l) => sum + l.viewCount, 0),
-    inquiries: mockListings.reduce((sum, l) => sum + l.inquiryCount, 0),
+    total: listings.length,
+    active: listings.filter(l => l.status === 'active').length,
+    views: listings.reduce((sum, l) => sum + l.viewCount, 0),
+    inquiries: listings.reduce((sum, l) => sum + l.inquiryCount, 0),
   };
 
   return (
@@ -304,10 +337,10 @@ export default function AgentListings() {
       </motion.div>
 
       {/* Listings Grid */}
-      <motion.div 
+      <motion.div
         variants={staggerItem}
         className={cn(
-          viewMode === 'grid' 
+          viewMode === 'grid'
             ? 'grid gap-6 sm:grid-cols-2 lg:grid-cols-3'
             : 'space-y-4'
         )}
@@ -315,7 +348,7 @@ export default function AgentListings() {
         {filteredListings.map((listing) => (
           <ListingCard key={listing.id} listing={listing} />
         ))}
-        
+
         {filteredListings.length === 0 && (
           <div className="col-span-full text-center py-12">
             <Square className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

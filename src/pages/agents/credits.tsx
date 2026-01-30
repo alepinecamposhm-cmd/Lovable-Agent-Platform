@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
-import { 
-  Plus, 
-  CreditCard, 
-  TrendingUp, 
+import {
+  Plus,
+  CreditCard,
+  TrendingUp,
   TrendingDown,
   Zap,
   AlertCircle,
@@ -15,7 +15,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -38,10 +38,33 @@ const actionLabels: Record<string, string> = {
   verification_request: 'Verificación',
 };
 
+import { useState } from 'react';
+import { BuyCreditsDialog } from '@/components/agents/credits/BuyCreditsDialog';
+
 export default function AgentCredits() {
-  const account = mockCreditAccount;
+  // Local state to simulate updates
+  const [account, setAccount] = useState(mockCreditAccount);
+  const [ledger, setLedger] = useState(mockLedger);
   const usedThisMonth = 65;
   const isLowBalance = account.balance <= account.lowBalanceThreshold;
+
+  const handlePurchase = (amount: number) => {
+    // Optimistic update
+    setAccount(prev => ({ ...prev, balance: prev.balance + amount }));
+    setLedger(prev => [
+      {
+        id: `txn-${Date.now()}`,
+        agentId: 'agent-1',
+        accountId: account.id,
+        createdAt: new Date(),
+        type: 'credit',
+        amount: amount,
+        description: 'Compra de créditos',
+        balance: account.balance + amount
+      },
+      ...prev
+    ]);
+  };
 
   return (
     <motion.div
@@ -58,10 +81,7 @@ export default function AgentCredits() {
             Administra tu saldo y consumo de créditos
           </p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          Recargar Créditos
-        </Button>
+        <BuyCreditsDialog onPurchase={handlePurchase} />
       </motion.div>
 
       {/* Balance Cards */}
@@ -147,7 +167,7 @@ export default function AgentCredits() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockLedger.map((entry) => (
+                  {ledger.map((entry) => (
                     <TableRow key={entry.id}>
                       <TableCell className="text-muted-foreground">
                         {format(entry.createdAt, 'd MMM', { locale: es })}

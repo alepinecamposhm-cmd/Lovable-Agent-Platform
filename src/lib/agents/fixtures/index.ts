@@ -431,6 +431,74 @@ export const mockListings: Listing[] = [
   },
 ];
 
+export const mockListingActivities: ListingActivityEvent[] = [
+  {
+    id: 'act-1',
+    listingId: 'listing-1',
+    type: 'view',
+    metadata: { source: 'organic' },
+    createdAt: new Date('2026-01-28T09:00:00'),
+  },
+  {
+    id: 'act-2',
+    listingId: 'listing-1',
+    type: 'save',
+    metadata: { user: 'lead-2' },
+    createdAt: new Date('2026-01-28T11:15:00'),
+  },
+  {
+    id: 'act-3',
+    listingId: 'listing-2',
+    type: 'inquiry',
+    metadata: { message: '¿Incluye estacionamiento?' },
+    createdAt: new Date('2026-01-27T18:30:00'),
+  },
+];
+
+export const mockTeamAgents: Agent[] = [
+  mockAgent,
+  {
+    id: 'agent-2',
+    email: 'lucia.torres@realty.com',
+    phone: '+52 55 0000 2222',
+    firstName: 'Lucía',
+    lastName: 'Torres',
+    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucia',
+    licenseNumber: 'RE-2024-002200',
+    licenseState: 'CDMX',
+    bio: 'Admin de equipo y especialista en lujo.',
+    specialties: ['luxury', 'team_lead'],
+    zones: [{ id: 'zone-4', name: 'Polanco', type: 'neighborhood' }],
+    languages: ['Español', 'English'],
+    teamId: 'team-1',
+    role: 'admin',
+    status: 'active',
+    profileCompletion: 70,
+    createdAt: new Date('2024-03-10'),
+    updatedAt: new Date('2026-01-25'),
+  },
+  {
+    id: 'agent-3',
+    email: 'javier.soto@realty.com',
+    phone: '+52 55 1111 3333',
+    firstName: 'Javier',
+    lastName: 'Soto',
+    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Javier',
+    licenseNumber: 'RE-2023-009900',
+    licenseState: 'EdoMex',
+    bio: 'Agente de campo, tours y open houses.',
+    specialties: ['buyer_rep', 'rentals'],
+    zones: [{ id: 'zone-5', name: 'Naucalpan', type: 'city' }],
+    languages: ['Español'],
+    teamId: 'team-1',
+    role: 'agent',
+    status: 'active',
+    profileCompletion: 60,
+    createdAt: new Date('2023-11-02'),
+    updatedAt: new Date('2026-01-20'),
+  },
+];
+
 export const mockCreditAccount: CreditAccount = {
   id: 'credit-1',
   ownerId: 'agent-1',

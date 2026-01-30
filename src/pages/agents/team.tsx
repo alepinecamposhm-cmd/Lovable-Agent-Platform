@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
+import { RoutingRulesDialog, RoutingRule } from '@/components/agents/team/RoutingRulesDialog';
 
 const teamMembers = [
   { name: `${mockAgent.firstName} ${mockAgent.lastName}`, role: 'Propietario', email: mockAgent.email },
@@ -30,6 +31,13 @@ const invites = [
 
 export default function AgentTeam() {
   const [inviteEmail, setInviteEmail] = useState('');
+  // Mock initial rules
+  const [rules, setRules] = useState<RoutingRule[]>([
+    { id: '1', zone: 'Condesa', assignToEmail: 'javier@realty.com' },
+    { id: '2', zone: 'Polanco', assignToEmail: 'lucia@realty.com' }
+  ]);
+
+  const teamMembersList = teamMembers.map(m => ({ email: m.email, name: m.name }));
 
   return (
     <motion.div
@@ -166,14 +174,20 @@ export default function AgentTeam() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex flex-wrap gap-2 text-xs">
-                <Badge variant="secondary">Zona: Condesa → Carlos</Badge>
-                <Badge variant="secondary">Zona: Polanco → Lucía</Badge>
-                <Badge variant="secondary">$8M+ → Javier</Badge>
+                {rules.map(rule => (
+                  <Badge key={rule.id} variant="secondary">
+                    Zona: {rule.zone} → {teamMembers.find(m => m.email === rule.assignToEmail)?.name.split(' ')[0] || 'Agente'}
+                  </Badge>
+                ))}
+                {rules.length === 0 && <span className="text-muted-foreground italic">Sin reglas activas</span>}
               </div>
               <p className="text-muted-foreground">
                 Motor de reglas para asignar leads automáticamente según área o rango de precio.
               </p>
-              <Button size="sm" className="w-full">Editar reglas</Button>
+              <RoutingRulesDialog
+                initialRules={rules}
+                teamMembers={teamMembersList}
+              />
             </CardContent>
           </Card>
         </div>

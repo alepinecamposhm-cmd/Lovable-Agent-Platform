@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSafeBack } from '@/lib/hooks/use-safe-back';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,7 @@ import { toast } from '@/components/ui/use-toast';
 
 export default function AgentContactNew() {
   const navigate = useNavigate();
+  const safeBack = useSafeBack();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -44,7 +46,7 @@ export default function AgentContactNew() {
           <h1 className="text-2xl font-bold tracking-tight">Nuevo contacto</h1>
           <p className="text-muted-foreground text-sm">Captura rápida para convertir después en lead.</p>
         </div>
-        <Button variant="outline" onClick={() => navigate(-1)}>Cancelar</Button>
+        <Button variant="outline" onClick={() => safeBack('/agents/contacts')}>Cancelar</Button>
       </motion.div>
 
       <motion.div variants={staggerItem}>
@@ -78,7 +80,7 @@ export default function AgentContactNew() {
               <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Preferencias, canal, presupuesto..." />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => navigate(-1)}>Cancelar</Button>
+              <Button variant="outline" onClick={() => safeBack('/agents/contacts')}>Cancelar</Button>
               <Button onClick={submit} disabled={saving}>Guardar</Button>
             </div>
           </CardContent>

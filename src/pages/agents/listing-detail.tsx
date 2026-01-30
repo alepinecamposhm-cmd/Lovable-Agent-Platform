@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useSafeBack } from '@/lib/hooks/use-safe-back';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
@@ -56,6 +57,7 @@ const verificationConfig: Record<VerificationStatus, { label: string; icon: Reac
 export default function AgentListingDetail() {
   const params = useParams();
   const navigate = useNavigate();
+  const safeBack = useSafeBack();
   const { listings } = useListingStore();
   const listing = listings.find((l) => l.id === params.listingId);
   const [status, setStatus] = useState<ListingStatus>(listing?.status ?? 'draft');
@@ -77,7 +79,7 @@ export default function AgentListingDetail() {
   if (!listing) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+        <Button variant="ghost" onClick={() => safeBack('/agents/listings')} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Volver
         </Button>
@@ -236,7 +238,7 @@ export default function AgentListingDetail() {
     >
       <div className="flex items-center justify-between gap-4">
         <motion.div variants={staggerItem} className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={() => safeBack('/agents/listings')}>
             <ArrowLeft className="h-4 w-4" />
             Volver a Propiedades
           </Button>

@@ -39,7 +39,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Lead, LeadStage } from '@/types/agents';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { differenceInHours, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -217,6 +217,7 @@ function StageColumn({ stage, leads, unreadIds }: StageColumnProps) {
 
 export default function AgentLeads() {
   const { leads } = useLeadStore();
+  const navigate = useNavigate();
   const activeLeads = useMemo(() => leads.filter((l) => !l.isSpam), [leads]);
   const spamLeads = useMemo(() => leads.filter((l) => l.isSpam), [leads]);
   const { notifications } = useNotificationStore();
@@ -230,6 +231,10 @@ export default function AgentLeads() {
     () => activeLeads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
     [activeLeads]
   );
+
+  useEffect(() => {
+    track('navigation.page_view', { properties: { path: '/agents/leads' } });
+  }, []);
 
   useEffect(() => {
     const hits = evaluateReminders(activeLeads);
@@ -283,7 +288,7 @@ export default function AgentLeads() {
         toast({
           title: 'Nudge SLA',
           description: `${lead.firstName} espera respuesta. Creamos una tarea.`,
-          action: <ToastAction altText="Abrir lead" onClick={() => window.location.assign(`/agents/leads/${lead.id}`)}>Ver lead</ToastAction>,
+          action: <ToastAction altText="Abrir lead" onClick={() => navigate(`/agents/leads/${lead.id}`)}>Ver lead</ToastAction>,
         });
         track('sla.nudge_shown', { properties: { leadId: lead.id } });
         localStorage.setItem('agenthub_sla_notified', '1');
@@ -444,7 +449,7 @@ export default function AgentLeads() {
             <p className="font-medium">Nudge SLA: {staleCount} lead(s) sin respuesta &gt; 2h</p>
             <p className="text-muted-foreground text-xs">Se creó tarea automática y notificación.</p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => window.location.assign('/agents/tasks')}>Ir a Tareas</Button>
+          <Button size="sm" variant="outline" onClick={() => navigate('/agents/tasks')}>Ir a Tareas</Button>
         </motion.div>
       )}
 

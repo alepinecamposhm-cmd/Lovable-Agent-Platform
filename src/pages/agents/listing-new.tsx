@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useSafeBack } from '@/lib/hooks/use-safe-back';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -91,6 +92,7 @@ export default function AgentListingWizard() {
   const listingId = params.listingId;
   const mode: 'create' | 'edit' = listingId ? 'edit' : 'create';
   const navigate = useNavigate();
+  const safeBack = useSafeBack();
   const { state: loadState, listing } = useListingData(listingId);
   const [step, setStep] = useState<'basics' | 'details' | 'media'>('basics');
   const [saving, setSaving] = useState(false);
@@ -179,7 +181,7 @@ export default function AgentListingWizard() {
   if (notFound) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+        <Button variant="ghost" onClick={() => safeBack('/agents/listings')} className="gap-2">
           <ArrowLeft className="h-4 w-4" /> Volver
         </Button>
         <Card>
@@ -195,7 +197,7 @@ export default function AgentListingWizard() {
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
       <motion.div variants={staggerItem} className="flex items-start justify-between gap-4">
         <div>
-          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={() => safeBack('/agents/listings')}>
             <ArrowLeft className="h-4 w-4" /> Volver
           </Button>
           <h1 className="text-2xl font-bold tracking-tight mt-2">

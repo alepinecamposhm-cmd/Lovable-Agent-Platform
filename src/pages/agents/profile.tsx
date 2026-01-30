@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useSafeBack } from '@/lib/hooks/use-safe-back';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import type { Agent } from '@/types/agents';
 export default function AgentProfilePage() {
   const params = useParams();
   const navigate = useNavigate();
+  const safeBack = useSafeBack();
   const [state, setState] = useState<'loading' | 'success' | 'error' | 'empty'>('loading');
   const [agent, setAgent] = useState<Agent | undefined>();
   const [completion, setCompletion] = useState(getProfileState().completion);
@@ -55,7 +57,7 @@ export default function AgentProfilePage() {
   if (state === 'error' || !agent) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)}>Volver</Button>
+        <Button variant="ghost" onClick={() => safeBack('/agents/profile')}>Volver</Button>
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             Perfil no encontrado.

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useSafeBack } from '@/lib/hooks/use-safe-back';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -92,6 +93,7 @@ const temperatureLabel = {
 export default function AgentLeadDetail() {
   const params = useParams();
   const navigate = useNavigate();
+  const safeBack = useSafeBack();
   const { leads } = useLeadStore();
   const { tasks } = useTaskStore();
   const lead = leads.find((l) => l.id === params.leadId);
@@ -99,6 +101,13 @@ export default function AgentLeadDetail() {
   const [noteDraft, setNoteDraft] = useState(lead?.notes || '');
   const [taskDraft, setTaskDraft] = useState('');
   const [tagDraft, setTagDraft] = useState('');
+
+  useEffect(() => {
+    track('navigation.page_view', { properties: { path: '/agents/leads/:leadId', leadId: params.leadId } });
+    if (!lead) {
+      track('route_error.lead_not_found', { properties: { leadId: params.leadId } });
+    }
+  }, [lead, params.leadId]);
 
   useEffect(() => {
     if (lead) setStage(lead.stage);
@@ -113,7 +122,7 @@ export default function AgentLeadDetail() {
   if (!lead) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+        <Button variant="ghost" onClick={() => safeBack('/agents/leads')} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Volver
         </Button>
@@ -223,7 +232,7 @@ export default function AgentLeadDetail() {
     >
       <div className="flex items-start justify-between gap-4">
         <motion.div variants={staggerItem} className="space-y-2">
-          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={() => safeBack('/agents/leads')}>
             <ArrowLeft className="h-4 w-4" />
             Volver a Leads
           </Button>

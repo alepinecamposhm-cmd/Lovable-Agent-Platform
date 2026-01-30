@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useSafeBack } from '@/lib/hooks/use-safe-back';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ import { ArrowLeft, Link2, ShieldAlert, UserPlus2, GitMerge } from 'lucide-react
 export default function AgentContactDetail() {
   const params = useParams();
   const navigate = useNavigate();
+  const safeBack = useSafeBack();
   const { contacts } = useContactStore();
   const contact = contacts.find((c) => c.id === params.contactId);
   const [merging, setMerging] = useState(false);
@@ -72,9 +74,10 @@ export default function AgentContactDetail() {
   };
 
   if (!contact) {
+    track('route_error.contact_not_found', { properties: { contactId: params.contactId } });
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+        <Button variant="ghost" onClick={() => safeBack('/agents/contacts')} className="gap-2">
           <ArrowLeft className="h-4 w-4" /> Volver
         </Button>
         <Card>

@@ -110,6 +110,41 @@ Commitear .env.example con valores vacíos.
 
 Documentar cada variable nueva aquí y en el apartado de Deploy.
 
+---
+
+### Desarrollo local: múltiples instancias (multi-agent) ✅
+Puedes levantar varias instancias locales en puertos diferentes para simular varios agentes en desarrollo.
+
+Archivos de ejemplo incluidos (commiteados como ejemplos):
+- `.env.example` — plantilla general
+- `.env.agent1.example` — ejemplo para la instancia `agent1` (puerto 8081)
+- `.env.agent2.example` — ejemplo para la instancia `agent2` (puerto 8082)
+
+Guía rápida:
+1) Copia el archivo de ejemplo a tu `.env` local (no commitees los `.env` reales):
+
+```sh
+cp .env.agent1.example .env.agent1
+cp .env.agent2.example .env.agent2
+```
+
+2) Levanta instancias en puertos distintos (en terminales separadas):
+
+```sh
+npm run dev:8081   # agent1
+npm run dev:8082   # agent2
+```
+
+3) Abre en el navegador:
+- http://localhost:8081/ (agent1)
+- http://localhost:8082/ (agent2)
+
+Uso en el código:
+- Lee `import.meta.env.VITE_AGENT_NAME` para adaptar seeds o comportamientos por agente.
+
+Notas:
+- **No** commitees archivos `.env` con credenciales; commitea solo `*.example`.
+
 Estructura del repo
 Entrypoints (documentado)
 index.html → src/main.tsx → src/App.tsx

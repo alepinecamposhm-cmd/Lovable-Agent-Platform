@@ -28,9 +28,6 @@ import AgentTasks from "./pages/agents/tasks";
 import AgentIntegrations from "./pages/agents/integrations";
 import AgentNotificationSettings from "./pages/agents/settings/notifications";
 import AgentOpenHouseVisitors from "./pages/agents/open-house/visitors";
-import AgentContacts from "./pages/agents/contacts";
-import AgentContactDetail from "./pages/agents/contact-detail";
-import AgentContactMerge from "./pages/agents/contact-merge";
 import AgentAudit from "./pages/agents/audit";
 
 const queryClient = new QueryClient();
@@ -68,9 +65,6 @@ const App = () => (
             <Route path="settings/notifications" element={<AgentNotificationSettings />} />
             <Route path="open-house/visitors" element={<AgentOpenHouseVisitors />} />
             <Route path="settings" element={<AgentSettings />} />
-            <Route path="contacts" element={<AgentContacts />} />
-            <Route path="contacts/:contactId" element={<AgentContactDetail />} />
-            <Route path="contacts/:contactId/merge" element={<AgentContactMerge />} />
             <Route path="audit" element={<AgentAudit />} />
           </Route>
 

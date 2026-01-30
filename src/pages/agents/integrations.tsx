@@ -1,74 +1,103 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Blocks, Check, ExternalLink } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { CloudOff, Link as LinkIcon, Loader2, PlugZap, RefreshCw } from 'lucide-react';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
-import { toast } from 'sonner';
-
-const APPS = [
-    { id: 'google', name: 'Google Calendar', desc: 'Sincroniza tus citas automáticamente.', icon: 'https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg', connected: true },
-    { id: 'whatsapp', name: 'WhatsApp Business', desc: 'Envía mensajes desde el CRM.', icon: 'https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg', connected: false },
-    { id: 'docusign', name: 'DocuSign', desc: 'Firma digital de contratos.', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c5/DocuSign_Logo.svg', connected: false },
-    { id: 'outlook', name: 'Outlook / Office 365', desc: 'Conecta tu email corporativo.', icon: 'https://upload.wikimedia.org/wikipedia/commons/d/df/Microsoft_Office_Outlook_%282018%E2%80%93present%29.svg', connected: false },
-    { id: 'zapier', name: 'Zapier', desc: 'Automatiza flujos con 5000+ apps.', icon: 'https://upload.wikimedia.org/wikipedia/commons/2/23/Zapier_logo.svg', connected: true },
-    { id: 'stripe', name: 'Stripe', desc: 'Gestiona pagos y facturación.', icon: 'https://upload.wikimedia.org/wikipedia/commons/b/ba/Stripe_Logo%2C_revised_2016.svg', connected: false },
-];
+import { connectIntegration, disconnectIntegration, useIntegrationStore } from '@/lib/agents/integrations/store';
+import type { IntegrationId } from '@/lib/agents/integrations/store';
+import { toast } from '@/components/ui/use-toast';
 
 export default function AgentIntegrations() {
-    const handleToggle = (name: string, current: boolean) => {
-        const newState = !current;
-        toast[newState ? 'success' : 'info'](
-            newState ? `${name} Conectado` : `${name} Desconectado`,
-            { description: newState ? "La sincronización comenzará en breve." : "Se ha revocado el acceso." }
-        );
-    };
+  const integrations = useIntegrationStore();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [state, setState] = useState<'success' | 'error'>('success');
 
-    return (
-        <motion.div
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
-            className="space-y-6"
-        >
-            <motion.div variants={staggerItem} className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.08em] text-muted-foreground">
-                    <Blocks className="h-4 w-4" /> Connectivity
-                </div>
-                <h1 className="text-3xl font-bold tracking-tight">Integraciones</h1>
-                <p className="text-muted-foreground">
-                    Conecta tus herramientas favoritas para centralizar tu flujo de trabajo.
-                </p>
-            </motion.div>
+  const handleConnect = (id: IntegrationId) => {
+    setBusy(id);
+    setTimeout(() => {
+      connectIntegration(id);
+      setBusy(null);
+      toast({ title: 'Conectado', description: `${id} (mock OAuth) conectado` });
+      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.connect', integration: id } }));
+    }, 700);
+  };
 
-            <motion.div variants={staggerItem} className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {APPS.map((app) => (
-                    <Card key={app.id} className="flex flex-col overflow-hidden transition-all hover:shadow-md">
-                        <CardHeader className="flex-row gap-4 items-start space-y-0 pb-2">
-                            <div className="w-12 h-12 bg-white rounded-lg border p-2 flex items-center justify-center shrink-0">
-                                <img src={app.icon} alt={app.name} className="w-full h-full object-contain" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <CardTitle className="text-base truncate" title={app.name}>{app.name}</CardTitle>
-                                {app.connected && (
-                                    <div className="flex items-center gap-1 text-xs text-emerald-600 font-medium mt-1">
-                                        <Check className="h-3 w-3" /> Conectado
-                                    </div>
-                                )}
-                            </div>
-                            <Switch checked={app.connected} onCheckedChange={() => handleToggle(app.name, app.connected)} />
-                        </CardHeader>
-                        <CardContent className="py-2 flex-1">
-                            <p className="text-sm text-muted-foreground">{app.desc}</p>
-                        </CardContent>
-                        <CardFooter className="bg-muted/30 py-3">
-                            <Button variant="ghost" size="sm" className="w-full text-xs h-8">
-                                Configurar <ExternalLink className="h-3 w-3 ml-2" />
-                            </Button>
-                        </CardFooter>
-                    </Card>
-                ))}
-            </motion.div>
-        </motion.div>
-    );
+  const handleDisconnect = (id: IntegrationId) => {
+    disconnectIntegration(id);
+    toast({ title: 'Desconectado', description: `${id} removido` });
+    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.disconnect', integration: id } }));
+  };
+
+  const refresh = () => {
+    setState('success');
+  };
+
+  return (
+    <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
+      <motion.div variants={staggerItem} className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Integraciones</h1>
+          <p className="text-muted-foreground text-sm">Dotloop, ShowingTime · estados loading/empty/error/success · persistencia mock.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={refresh} className="gap-2">
+          <RefreshCw className="h-4 w-4" /> Refrescar
+        </Button>
+      </motion.div>
+
+      <motion.div variants={staggerItem} className="grid gap-4 md:grid-cols-2">
+        {integrations.map((item) => (
+          <Card key={item.id} className="border">
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <PlugZap className="h-4 w-4 text-primary" /> {item.name}
+              </CardTitle>
+              <Badge variant={item.status === 'connected' ? 'default' : 'outline'} className="capitalize">
+                {item.status}
+              </Badge>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <p className="text-muted-foreground">{item.description}</p>
+              {item.lastSyncedAt && (
+                <p className="text-xs text-muted-foreground">Última sync: {item.lastSyncedAt.toLocaleString()}</p>
+              )}
+              <div className="flex gap-2">
+                {item.status !== 'connected' ? (
+                  <Button className="gap-2" onClick={() => handleConnect(item.id)} disabled={busy === item.id}>
+                    {busy === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
+                    Conectar
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => handleDisconnect(item.id)} className="gap-2">
+                    <CloudOff className="h-4 w-4" /> Desconectar
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </motion.div>
+
+      {integrations.length === 0 && (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">
+            Estado empty: no hay integraciones disponibles.
+          </CardContent>
+        </Card>
+      )}
+
+      {state === 'error' && (
+        <Card>
+          <CardContent className="py-6 text-destructive flex items-center gap-2">
+            <CloudOff className="h-4 w-4" /> Error al cargar integraciones.
+          </CardContent>
+        </Card>
+      )}
+
+      <Separator />
+      <p className="text-xs text-muted-foreground">Mock OAuth + tracking mínimo: integration.connect / integration.disconnect.</p>
+    </motion.div>
+  );
 }

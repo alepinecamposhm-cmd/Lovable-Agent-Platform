@@ -356,6 +356,16 @@ export default function AgentListingDetail() {
                   ))}
                 </div>
               )}
+
+              <div className="flex items-center gap-3 mt-4">
+                <BoostDialog listingId={listing.id} cost={10} />
+                <BuyCreditsDialog onPurchase={(credits) => {
+                  // Local optimistic update: append ledger entry
+                  // For demo only; real backend would update
+                  // eslint-disable-next-line no-console
+                  console.log('purchased', credits);
+                }} />
+              </div>
             </CardContent>
           </Card>
 

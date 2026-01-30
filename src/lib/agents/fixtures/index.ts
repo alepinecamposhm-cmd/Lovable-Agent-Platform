@@ -11,6 +11,7 @@ import type {
   Task,
   AgentMetrics,
   LeadActivity,
+  AgentFeedback,
 } from '@/types/agents';
 
 export const mockAgent: Agent = {
@@ -731,5 +732,32 @@ export const mockLeadActivities: LeadActivity[] = [
     description: 'Asignado a Carlos Mendez',
     createdBy: 'agent-1',
     createdAt: new Date('2026-01-24T08:30:00'),
+  },
+];
+
+export const mockAgentFeedback: AgentFeedback[] = [
+  {
+    id: 'fb-1',
+    agentId: 'agent-1',
+    rating: 5,
+    comment: 'Excelente tour y comunicación rápida.',
+    source: 'post_visit',
+    createdAt: new Date('2026-01-28T15:00:00'),
+  },
+  {
+    id: 'fb-2',
+    agentId: 'agent-1',
+    rating: 4,
+    comment: 'Buen seguimiento, faltó enviar contrato el mismo día.',
+    source: 'post_close',
+    createdAt: new Date('2026-01-26T12:00:00'),
+  },
+  {
+    id: 'fb-3',
+    agentId: 'agent-1',
+    rating: 3,
+    comment: 'La visita empezó tarde, pero resolvió dudas.',
+    source: 'post_visit',
+    createdAt: new Date('2026-01-24T10:30:00'),
   },
 ];

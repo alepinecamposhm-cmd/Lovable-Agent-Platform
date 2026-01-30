@@ -370,3 +370,13 @@ export interface AgentMetrics {
   closedWonRate: number;
   healthScore: number;
 }
+
+// ============ FEEDBACK / CX ============
+export interface AgentFeedback {
+  id: string;
+  agentId: string;
+  rating: number; // 1-5
+  comment: string;
+  source: 'post_visit' | 'post_close' | 'survey';
+  createdAt: Date;
+}

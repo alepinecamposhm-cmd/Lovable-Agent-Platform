@@ -18,6 +18,7 @@ import {
   Tags,
   TrendingUp,
   UserRound,
+  Briefcase,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +55,7 @@ import { es } from 'date-fns/locale';
 import { useLeadStore, updateLeadNotes, updateLeadStage, updateLeadTags } from '@/lib/agents/leads/store';
 import { add as addNotification } from '@/lib/agents/notifications/store';
 import { addTask, completeTask, undoCompleteTask, useTaskStore } from '@/lib/agents/tasks/store';
+import { listIntegrations } from '@/lib/agents/integrations/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string }> = {
   new: { label: 'New', color: 'bg-blue-500' },
@@ -192,6 +194,24 @@ export default function AgentLeadDetail() {
     toast({ title: 'Etiqueta agregada', description: nextTags.join(', ') });
   };
 
+  const handleDotloop = () => {
+    const integrations = listIntegrations();
+    const dotloop = integrations.find((i) => i.id === 'dotloop');
+    if (!dotloop || dotloop.status !== 'connected') {
+      toast({ title: 'Conecta Dotloop', description: 'Ve a Integraciones para autorizar.', action: <ToastAction altText="Integraciones" onClick={() => navigate('/agents/integrations')}>Abrir</ToastAction> });
+      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_error', integration: 'dotloop', reason: 'not_connected' } }));
+      return;
+    }
+    addNotification({
+      type: 'system',
+      title: 'Transacción iniciada (mock)',
+      body: `${lead.firstName} en Dotloop`,
+      actionUrl: '/agents/integrations',
+    });
+    toast({ title: 'Iniciada en Dotloop (mock)', description: 'Se simuló la creación de transacción.' });
+    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_start', integration: 'dotloop', leadId: lead.id } }));
+  };
+
   return (
     <motion.div
       variants={staggerContainer}
@@ -250,6 +270,10 @@ export default function AgentLeadDetail() {
               <CalendarIcon className="h-4 w-4" />
               Agendar visita
             </Link>
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={handleDotloop}>
+            <Briefcase className="h-4 w-4" />
+            Iniciar en Dotloop
           </Button>
           <Select value={stage} onValueChange={(v) => handleStageChange(v as LeadStage)}>
             <SelectTrigger className="w-44">

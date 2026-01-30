@@ -1,162 +1,117 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Bell, CheckCheck, Filter, Inbox } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Bell, MessageSquare, UserPlus, Info, Check, Trash2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import {
-  list,
-  markAllRead,
-  markRead,
-  NotificationType,
-  useNotificationStore,
-} from '@/lib/agents/notifications/store';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
 
-const typeLabels: Record<NotificationType, string> = {
-  lead: 'Leads',
-  message: 'Mensajes',
-  appointment: 'Citas',
-  task: 'Tareas',
-  listing: 'Listings',
-  credit: 'Créditos',
-  system: 'Sistema',
-};
+interface Notification {
+  id: string;
+  type: 'lead' | 'message' | 'system';
+  title: string;
+  description: string;
+  time: string;
+  read: boolean;
+}
+
+const MOCK_NOTIFICATIONS: Notification[] = [
+  { id: '1', type: 'lead', title: 'Nuevo Lead Asignado', description: 'Roberto Gómez está interesado en "Departamento Condesa".', time: 'Hace 5 min', read: false },
+  { id: '2', type: 'message', title: 'Mensaje de Sarah', description: '¿Podemos reagendar la visita de mañana?', time: 'Hace 30 min', read: false },
+  { id: '3', type: 'system', title: 'Meta Alcanzada', description: '¡Felicidades! Has completado 5 tareas hoy.', time: 'Hace 2 h', read: true },
+  { id: '4', type: 'system', title: 'Mantenimiento Programado', description: 'La plataforma se actualizará el domingo a las 3 AM.', time: 'Hace 1 día', read: true },
+];
 
 export default function AgentNotifications() {
-  const { notifications, unread } = useNotificationStore();
-  const [typeFilter, setTypeFilter] = useState<NotificationType | 'all'>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'read'>('all');
+  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
 
-  const feed = useMemo(() => {
-    return list().filter((n) => {
-      const typeOk = typeFilter === 'all' || n.type === typeFilter;
-      const statusOk = statusFilter === 'all' || n.status === statusFilter;
-      return typeOk && statusOk;
-    });
-  }, [typeFilter, statusFilter]);
+  const markAllRead = () => {
+    setNotifications(notifications.map(n => ({ ...n, read: true })));
+    toast.info("Todas las notificaciones marcadas como leídas");
+  };
+
+  const deleteNotification = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNotifications(notifications.filter(n => n.id !== id));
+  };
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case 'lead': return <UserPlus className="h-5 w-5 text-blue-500" />;
+      case 'message': return <MessageSquare className="h-5 w-5 text-emerald-500" />;
+      case 'system': return <Info className="h-5 w-5 text-amber-500" />;
+      default: return <Bell className="h-5 w-5" />;
+    }
+  };
 
   return (
     <motion.div
       variants={staggerContainer}
       initial="hidden"
       animate="visible"
-      className="space-y-6"
+      className="space-y-6 max-w-2xl mx-auto"
     >
-      <motion.div variants={staggerItem} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Bell className="h-5 w-5 text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Notificaciones</h1>
-            <p className="text-muted-foreground text-sm">Centro de alertas (leads, mensajes, citas, listings, créditos).</p>
-          </div>
+      <motion.div variants={staggerItem} className="flex items-center justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            Notificaciones
+            <Badge variant="secondary" className="rounded-full">{notifications.filter(n => !n.read).length}</Badge>
+          </h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => markAllRead()} className="gap-2">
-            <CheckCheck className="h-4 w-4" />
-            Marcar todas
-          </Button>
-          <Badge variant="secondary" className="text-xs">{unread} sin leer</Badge>
-        </div>
+        <Button variant="outline" size="sm" onClick={markAllRead} className="gap-2">
+          <Check className="h-4 w-4" /> Marcar leídas
+        </Button>
       </motion.div>
 
-      <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            Filtros
-          </CardTitle>
-          <div className="flex flex-wrap gap-2">
-            <Badge
-              variant={typeFilter === 'all' ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => setTypeFilter('all')}
-              aria-label="Filtrar todos los tipos"
-            >
-              Todos
-            </Badge>
-            {Object.entries(typeLabels).map(([key, label]) => (
-              <Badge
-                key={key}
-                variant={typeFilter === key ? 'default' : 'outline'}
-                className="cursor-pointer"
-                onClick={() => setTypeFilter(key as NotificationType)}
-                aria-label={`Filtrar ${label}`}
-              >
-                {label}
-              </Badge>
-            ))}
-            <Separator orientation="vertical" className="h-6" />
-            <Badge
-              variant={statusFilter === 'all' ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => setStatusFilter('all')}
-              aria-label="Mostrar todas"
-            >
-              Todos
-            </Badge>
-            <Badge
-              variant={statusFilter === 'unread' ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => setStatusFilter('unread')}
-              aria-label="Solo sin leer"
-            >
-              Sin leer
-            </Badge>
-            <Badge
-              variant={statusFilter === 'read' ? 'default' : 'outline'}
-              className="cursor-pointer"
-              onClick={() => setStatusFilter('read')}
-              aria-label="Solo leídas"
-            >
-              Leídas
-            </Badge>
+      <motion.div variants={staggerItem} className="grid gap-3">
+        {notifications.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Bell className="h-12 w-12 mx-auto mb-3 opacity-20" />
+            <p>No tienes notificaciones nuevas.</p>
           </div>
-        </CardHeader>
-        <CardContent className="divide-y max-h-[70vh] overflow-y-auto" role="list" aria-label="Lista de notificaciones">
-          {feed.length === 0 && (
-            <div className="py-10 flex flex-col items-center gap-2 text-muted-foreground">
-              <Inbox className="h-8 w-8" />
-              <p>No hay notificaciones para estos filtros.</p>
-            </div>
-          )}
-          {feed.map((n) => (
-            <motion.div
+        ) : (
+          notifications.map((n) => (
+            <Card
               key={n.id}
-              variants={staggerItem}
               className={cn(
-                'flex items-start gap-3 py-3 cursor-pointer group',
-                n.status === 'unread' && 'bg-primary/5 rounded-lg px-3 -mx-3'
+                "transition-all hover:bg-muted/50 cursor-pointer relative group",
+                !n.read && "border-l-4 border-l-primary bg-primary/5"
               )}
-              onClick={() => markRead(n.id)}
-              tabIndex={0}
-              role="listitem"
-              aria-label={`${n.title} - ${formatDistanceToNow(n.createdAt, { addSuffix: true, locale: es })}`}
+              onClick={() => {
+                if (!n.read) setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+              }}
             >
-              <Badge variant="secondary" className="mt-1 capitalize">
-                {typeLabels[n.type] || n.type}
-              </Badge>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium text-sm leading-tight">{n.title}</p>
-                  {n.status === 'unread' && <span className="h-2 w-2 rounded-full bg-primary" />}
+              <CardContent className="p-4 flex gap-4 items-start">
+                <div className={cn("p-2 rounded-full shrink-0", !n.read ? "bg-background shadow-sm" : "bg-muted")}>
+                  {getIcon(n.type)}
                 </div>
-                <p className="text-sm text-muted-foreground truncate">{n.body}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatDistanceToNow(n.createdAt, { addSuffix: true, locale: es })}
-                </p>
-              </div>
-              <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); markRead(n.id); }}>
-                Marcar leída
-              </Button>
-            </motion.div>
-          ))}
-        </CardContent>
-      </Card>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <div className="flex justify-between items-start">
+                    <p className={cn("text-sm font-medium leading-none", !n.read && "font-bold")}>
+                      {n.title}
+                    </p>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">{n.time}</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {n.description}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 opacity-0 group-hover:opacity-100 absolute top-2 right-2 transition-opacity"
+                  onClick={(e) => deleteNotification(n.id, e)}
+                >
+                  <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                </Button>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </motion.div>
     </motion.div>
   );
 }

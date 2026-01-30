@@ -16,13 +16,21 @@ import AgentInbox from "./pages/agents/inbox";
 import AgentCalendar from "./pages/agents/calendar";
 import AgentListings from "./pages/agents/listings";
 import AgentListingDetail from "./pages/agents/listing-detail";
+import AgentListingWizard from "./pages/agents/listing-new";
+import AgentProfilePage from "./pages/agents/profile";
 import AgentCredits from "./pages/agents/credits";
 import AgentReports from "./pages/agents/reports";
+import AgentExperienceReport from "./pages/agents/reports-experience";
+import AgentRoiReport from "./pages/agents/reports-roi";
 import AgentTeam from "./pages/agents/team";
 import AgentSettings from "./pages/agents/settings";
 import AgentRoadmap from "./pages/agents/roadmap";
 import AgentNotifications from "./pages/agents/notifications";
 import AgentTasks from "./pages/agents/tasks";
+import AgentIntegrations from "./pages/agents/integrations";
+import AgentNotificationSettings from "./pages/agents/settings/notifications";
+import AgentOpenHouseVisitors from "./pages/agents/open-house/visitors";
+import AgentAudit from "./pages/agents/audit";
 
 const queryClient = new QueryClient();
 
@@ -34,7 +42,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          
+
           {/* Agent Platform Routes */}
           <Route path="/agents" element={<AgentErrorBoundary><AgentLayout /></AgentErrorBoundary>}>
             <Route index element={<Navigate to="overview" replace />} />
@@ -44,14 +52,24 @@ const App = () => (
             <Route path="inbox" element={<AgentInbox />} />
             <Route path="calendar" element={<AgentCalendar />} />
             <Route path="listings" element={<AgentListings />} />
+            <Route path="listings/new" element={<AgentListingWizard />} />
+            <Route path="listings/:listingId/edit" element={<AgentListingWizard />} />
             <Route path="listings/:listingId" element={<AgentListingDetail />} />
+            <Route path="profile" element={<AgentProfilePage />} />
+            <Route path="profile/:agentId" element={<AgentProfilePage />} />
             <Route path="credits" element={<AgentCredits />} />
             <Route path="team" element={<AgentTeam />} />
             <Route path="reports" element={<AgentReports />} />
+            <Route path="reports/experience" element={<AgentExperienceReport />} />
+            <Route path="reports/roi" element={<AgentRoiReport />} />
             <Route path="roadmap" element={<AgentRoadmap />} />
             <Route path="notifications" element={<AgentNotifications />} />
             <Route path="tasks" element={<AgentTasks />} />
+            <Route path="integrations" element={<AgentIntegrations />} />
+            <Route path="settings/notifications" element={<AgentNotificationSettings />} />
+            <Route path="open-house/visitors" element={<AgentOpenHouseVisitors />} />
             <Route path="settings" element={<AgentSettings />} />
+            <Route path="audit" element={<AgentAudit />} />
           </Route>
 
           <Route path="*" element={<NotFound />} />

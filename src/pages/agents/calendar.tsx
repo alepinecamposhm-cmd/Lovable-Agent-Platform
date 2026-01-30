@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { addAppointment, setAppointmentStatus, updateAppointment, useAppointmentStore } from '@/lib/agents/appointments/store';
-import { mockLeads } from '@/lib/agents/fixtures';
+import { mockLeads, mockTeamAgents } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import {
@@ -54,6 +54,7 @@ import { es } from 'date-fns/locale';
 import type { Appointment } from '@/types/agents';
 import { add as addNotification } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
+import { addNoShowFollowUp } from '@/lib/agents/tasks/store';
 
 const statusConfig = {
   pending: { label: 'Pendiente', color: 'bg-warning/10 text-warning border-warning/20' },
@@ -83,14 +84,23 @@ function AppointmentCard({
   onConfirm,
   onReschedule,
   onCancel,
+  onNoShow,
 }: {
   appointment: Appointment;
   onConfirm: (id: string) => void;
   onReschedule: (apt: Appointment) => void;
   onCancel: (apt: Appointment) => void;
+  onNoShow: (apt: Appointment) => void;
 }) {
   const status = statusConfig[appointment.status];
   const actionsVisible = appointment.status !== 'cancelled' && appointment.status !== 'completed';
+  const typeLabel: Record<Appointment['type'], string> = {
+    showing: 'Visita',
+    consultation: 'Consulta',
+    listing_presentation: 'Presentación',
+    closing: 'Cierre',
+    open_house: 'Open House',
+  };
 
   return (
     <motion.div
@@ -114,9 +124,14 @@ function AppointmentCard({
           </div>
           <span className="text-xs text-muted-foreground">{appointment.duration} min</span>
         </div>
-        <Badge variant="outline" className={cn('text-[10px]', status.color)}>
-          {status.label}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="text-[10px]">
+            {typeLabel[appointment.type] || 'Cita'}
+          </Badge>
+          <Badge variant="outline" className={cn('text-[10px]', status.color)}>
+            {status.label}
+          </Badge>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 mb-2">
@@ -144,19 +159,27 @@ function AppointmentCard({
               </TooltipTrigger>
               <TooltipContent side="bottom">Confirmar</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Reprogramar cita" onClick={() => onReschedule(appointment)}>
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">Reprogramar</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Cancelar cita" onClick={() => onCancel(appointment)}>
-                  <X className="h-4 w-4 text-destructive" />
-                </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Reprogramar cita" onClick={() => onReschedule(appointment)}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Reprogramar</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Marcar no-show" onClick={() => onNoShow(appointment)}>
+                <AlertCircle className="h-4 w-4 text-destructive" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">No-show</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Cancelar cita" onClick={() => onCancel(appointment)}>
+                <X className="h-4 w-4 text-destructive" />
+              </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Cancelar</TooltipContent>
             </Tooltip>
@@ -175,6 +198,7 @@ function AppointmentCard({
         <div className="sm:hidden flex gap-2 mt-3">
           <Button size="sm" variant="outline" className="flex-1" onClick={() => onConfirm(appointment.id)} aria-label="Confirmar cita mobile">Confirmar</Button>
           <Button size="sm" variant="outline" className="flex-1" onClick={() => onReschedule(appointment)} aria-label="Reprogramar cita mobile">Reprogramar</Button>
+          <Button size="sm" variant="outline" className="flex-1 text-destructive" onClick={() => onNoShow(appointment)} aria-label="No-show mobile">No-show</Button>
           <Button size="sm" variant="ghost" className="flex-1 text-destructive" onClick={() => onCancel(appointment)} aria-label="Cancelar cita mobile">Cancelar</Button>
         </div>
       )}
@@ -188,19 +212,28 @@ export default function AgentCalendar() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date('2026-01-29'));
   const [reschedule, setReschedule] = useState<RescheduleState>({ open: false, date: '', time: '' });
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
+  const [agentFilter, setAgentFilter] = useState<'all' | string>('all');
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
+  const filteredAppointments = useMemo(() => {
+    return agentFilter === 'all' ? appointments : appointments.filter((a) => a.agentId === agentFilter);
+  }, [appointments, agentFilter]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'calendar.switch_agent', agentId: agentFilter } }));
+  }, [agentFilter]);
+
   const getAppointmentsForDate = (date: Date) =>
-    appointments.filter((apt) => isSameDay(apt.scheduledAt, date));
+    filteredAppointments.filter((apt) => isSameDay(apt.scheduledAt, date));
 
   const selectedDateAppointments = selectedDate ? getAppointmentsForDate(selectedDate) : [];
 
   const upcoming = useMemo(
-    () => appointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed'),
-    [appointments]
+    () => filteredAppointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed'),
+    [filteredAppointments]
   );
 
   const handleConfirm = (id: string) => {
@@ -222,6 +255,19 @@ export default function AgentCalendar() {
       date: formatDateInput(apt.scheduledAt),
       time: formatTimeInput(apt.scheduledAt),
     });
+  };
+
+  const handleNoShow = (apt: Appointment) => {
+    setAppointmentStatus(apt.id, 'no_show');
+    addNoShowFollowUp(apt);
+    addNotification({
+      type: 'task',
+      title: 'No-show registrado',
+      body: `${apt.lead?.firstName || 'Lead'} · follow-up creado`,
+      actionUrl: '/agents/tasks',
+    });
+    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'appointment.no_show', appointmentId: apt.id } }));
+    toast({ title: 'Marcado como no-show', description: 'Se creó tarea automática de seguimiento.' });
   };
 
   const handleRescheduleSubmit = () => {
@@ -283,14 +329,28 @@ export default function AgentCalendar() {
 
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
-      <motion.div variants={staggerItem} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <motion.div variants={staggerItem} className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Calendario</h1>
           <p className="text-muted-foreground">Gestiona tus citas y visitas</p>
         </div>
-        <Button onClick={handleNewAppointment} aria-label="Crear nueva cita">
-          <Plus className="h-4 w-4 mr-2" /> Nueva Cita
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <select
+            className="rounded-md border px-3 py-2 text-sm"
+            value={agentFilter}
+            onChange={(e) => setAgentFilter(e.target.value)}
+          >
+            <option value="all">Todos los agentes</option>
+            {mockTeamAgents.map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.firstName} {agent.lastName}
+              </option>
+            ))}
+          </select>
+          <Button onClick={handleNewAppointment} aria-label="Crear nueva cita">
+            <Plus className="h-4 w-4 mr-2" /> Nueva Cita
+          </Button>
+        </div>
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -375,6 +435,7 @@ export default function AgentCalendar() {
                                 appointment={apt}
                                 onConfirm={handleConfirm}
                                 onReschedule={openReschedule}
+                                onNoShow={handleNoShow}
                                 onCancel={setCancelTarget}
                               />
                             ))}
@@ -442,6 +503,15 @@ export default function AgentCalendar() {
                       aria-label="Reprogramar cita lista"
                     >
                       <Pencil className="h-4 w-4 mr-1" /> Reprogramar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-destructive"
+                      onClick={() => handleNoShow(appointment)}
+                      aria-label="No-show lista"
+                    >
+                      <AlertCircle className="h-4 w-4 mr-1" /> No-show
                     </Button>
                     <Button
                       size="sm"

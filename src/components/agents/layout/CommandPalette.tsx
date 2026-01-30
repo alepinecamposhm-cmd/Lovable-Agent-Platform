@@ -23,6 +23,8 @@ import {
   Settings,
   Plus,
   Search,
+  CheckSquare,
+  Blocks,
 } from 'lucide-react';
 import { mockLeads, mockListings } from '@/lib/agents/fixtures';
 
@@ -56,8 +58,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     { icon: CreditCard, label: 'Créditos', href: '/agents/credits' },
     { icon: UsersRound, label: 'Equipo', href: '/agents/team' },
     { icon: BarChart3, label: 'Reportes', href: '/agents/reports' },
+    { icon: BarChart3, label: 'Audit', href: '/agents/audit' },
     { icon: Map, label: 'Mapa (Plan)', shortcut: 'G P', href: '/agents/roadmap' },
     { icon: Bell, label: 'Notificaciones', shortcut: 'G N', href: '/agents/notifications' },
+    { icon: CheckSquare, label: 'Mis Tareas', href: '/agents/tasks' },
+    { icon: Blocks, label: 'Integraciones', href: '/agents/integrations' },
     { icon: Settings, label: 'Configuración', href: '/agents/settings' },
   ];
 
@@ -72,7 +77,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       <CommandInput placeholder="Buscar o ejecutar comando..." />
       <CommandList>
         <CommandEmpty>No se encontraron resultados.</CommandEmpty>
-        
+
         <CommandGroup heading="Acciones rápidas">
           {actionItems.map((item) => (
             <CommandItem

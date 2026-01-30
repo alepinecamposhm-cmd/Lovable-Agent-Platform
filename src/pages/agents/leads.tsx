@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext,
@@ -43,10 +43,12 @@ import { Link } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { differenceInHours, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { addLead, updateLeadStage, useLeadStore } from '@/lib/agents/leads/store';
 import { add as addNotification, useNotificationStore } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
+import { matchAgent } from '@/lib/agents/routing/store';
+import { mockTeamAgents } from '@/lib/agents/fixtures';
+import { addTask } from '@/lib/agents/tasks/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -210,7 +212,7 @@ function StageColumn({ stage, leads, unreadIds }: StageColumnProps) {
 }
 
 export default function AgentLeads() {
-  const { leads } = useLeadStore();
+  const [leads, setLeads] = useState<Lead[]>([]);
   const { notifications } = useNotificationStore();
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,6 +220,52 @@ export default function AgentLeads() {
   const [onlyNew, setOnlyNew] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const staleCount = useMemo(
+    () => leads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
+    [leads]
+  );
+
+  useEffect(() => {
+    fetch('/api/leads')
+      .then((res) => res.json())
+      .then((data) => setLeads(data));
+  }, []);
+
+  useEffect(() => {
+    const stale = leads.filter(
+      (lead) =>
+        lead.stage === 'new' &&
+        differenceInHours(new Date(), lead.createdAt) >= 2
+    );
+    if (stale.length > 0) {
+      const already = localStorage.getItem('agenthub_sla_notified') === '1';
+      if (!already) {
+        const lead = stale[0];
+        addTask({
+          title: `Responder a ${lead.firstName}`,
+          leadId: lead.id,
+          dueAt: new Date(),
+          priority: 'high',
+          origin: 'auto',
+          originKey: `sla-${lead.id}`,
+          tags: ['SLA'],
+        });
+        addNotification({
+          type: 'task',
+          title: 'Nudge SLA: Lead sin respuesta',
+          body: `${lead.firstName} lleva >2h en New`,
+          actionUrl: `/agents/leads/${lead.id}`,
+        });
+        toast({
+          title: 'Nudge SLA',
+          description: `${lead.firstName} espera respuesta. Creamos una tarea.`,
+          action: <ToastAction altText="Abrir lead" onClick={() => window.location.assign(`/agents/leads/${lead.id}`)}>Ver lead</ToastAction>,
+        });
+        window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'sla.nudge_shown', leadId: lead.id } }));
+        localStorage.setItem('agenthub_sla_notified', '1');
+      }
+    }
+  }, [leads]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -276,16 +324,24 @@ export default function AgentLeads() {
 
     if (!targetStage) return;
 
-    const previous = updateLeadStage(activeLeadId, targetStage);
-    if (!previous || previous.stage === targetStage) return;
+    const lead = leads.find(l => l.id === activeLeadId);
+    if (!lead || lead.stage === targetStage) return;
+
+    const previousStage = lead.stage;
+    
+    // TODO: replace with API call
+    setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: targetStage! } : l));
 
     const stageLabel = stageConfig[targetStage].label;
     toast({
       title: `Lead movido a ${stageLabel}`,
-      description: `${previous.firstName} ahora está en ${stageLabel}.`,
+      description: `${lead.firstName} ahora está en ${stageLabel}.`,
       duration: 5000,
       action: (
-        <ToastAction altText="Deshacer" onClick={() => updateLeadStage(activeLeadId, previous.stage)}>
+        <ToastAction altText="Deshacer" onClick={() => {
+          // TODO: replace with API call
+          setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: previousStage } : l));
+        }}>
           Deshacer
         </ToastAction>
       ),
@@ -294,7 +350,7 @@ export default function AgentLeads() {
     addNotification({
       type: targetStage === 'appointment_set' ? 'appointment' : 'lead',
       title: targetStage === 'appointment_set' ? 'Cita programada' : `Lead movido a ${stageLabel}`,
-      body: `${previous.firstName} ${previous.lastName || ''}`.trim(),
+      body: `${lead.firstName} ${lead.lastName || ''}`.trim(),
       actionUrl: `/agents/leads/${activeLeadId}`,
     });
 
@@ -305,17 +361,26 @@ export default function AgentLeads() {
 
   const handleAddLead = () => {
     const random = Math.floor(Math.random() * 900) + 100;
-    const newLead = addLead({
+    const assignedTo = matchAgent({ zone: 'Polanco', price: 5000000 }) || 'agent-1';
+    const newLead: Lead = {
+      id: `lead-${Date.now()}`,
+      agentId: assignedTo,
       firstName: `Lead ${random}`,
       lastName: 'Demo',
       stage: 'new',
       interestedIn: 'buy',
       source: 'marketplace',
       temperature: 'warm',
-    });
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      conversationId: `conv-${Date.now()}`,
+    };
+    // TODO: replace with API call
+    setLeads(prev => [newLead, ...prev]);
+
     toast({
       title: 'Lead creado',
-      description: `${newLead.firstName} añadido al pipeline (New).`,
+      description: `${newLead.firstName} asignado a ${mockTeamAgents.find(a => a.id === assignedTo)?.firstName || 'agente'}.`,
     });
     addNotification({
       type: 'lead',
@@ -354,6 +419,16 @@ export default function AgentLeads() {
           Nuevo Lead
         </Button>
       </motion.div>
+
+      {staleCount > 0 && (
+        <motion.div variants={staggerItem} className="p-4 rounded-lg border bg-warning/10 text-sm flex items-center justify-between">
+          <div>
+            <p className="font-medium">Nudge SLA: {staleCount} lead(s) sin respuesta &gt; 2h</p>
+            <p className="text-muted-foreground text-xs">Se creó tarea automática y notificación.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => window.location.assign('/agents/tasks')}>Ir a Tareas</Button>
+        </motion.div>
+      )}
 
       {/* Filters */}
       <motion.div variants={staggerItem} className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

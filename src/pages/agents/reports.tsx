@@ -11,8 +11,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { mockMetrics, mockLeads, mockAppointments } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
+import { CustomerFeedbackDialog } from '@/components/agents/reports/CustomerFeedbackDialog';
 import {
   LineChart,
   Line,
@@ -21,13 +23,14 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  BarChart,
   Bar,
   Legend,
 } from 'recharts';
 
 const kpiCards = [
   {
-    label: 'Respuesta &lt;5m',
+    label: 'Respuesta <5m',
     value: `${mockMetrics.responseRate}%`,
     trend: '+3%',
     icon: Clock,
@@ -88,10 +91,18 @@ export default function AgentReports() {
             KPIs de retención, velocidad y conversión inspirados en Zillow Premier Agent.
           </p>
         </div>
-        <Badge variant="secondary" className="gap-2">
-          <BarChart3 className="h-4 w-4" />
-          {upcoming} citas programadas
-        </Badge>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <a href="/agents/reports/experience">Customer Experience</a>
+          </Button>
+          <Button variant="outline" asChild>
+            <a href="/agents/reports/roi">ROI Créditos</a>
+          </Button>
+          <Badge variant="secondary" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            {upcoming} citas programadas
+          </Badge>
+        </div>
       </motion.div>
 
       {/* KPIs */}
@@ -206,7 +217,7 @@ export default function AgentReports() {
                 <p>• Destaca agentes con mejor servicio y alerta outliers.</p>
                 <p>• Exportar feedback para coaching.</p>
               </div>
-              <Button size="sm" variant="outline" className="w-full">Ver feedback reciente</Button>
+              <CustomerFeedbackDialog />
             </CardContent>
           </Card>
         </motion.div>

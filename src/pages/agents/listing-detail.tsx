@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Eye,
   Heart,
+  Loader2,
   MapPin,
   MessageSquare,
   ShieldHalf,
@@ -25,7 +26,10 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/components/ui/use-toast';
-import { mockListings } from '@/lib/agents/fixtures';
+import { useListingStore, listListingActivities } from '@/lib/agents/listings/store';
+import { addAppointment } from '@/lib/agents/appointments/store';
+import { add as addNotification } from '@/lib/agents/notifications/store';
+import { listIntegrations } from '@/lib/agents/integrations/store';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
@@ -50,9 +54,19 @@ const verificationConfig: Record<VerificationStatus, { label: string; icon: Reac
 export default function AgentListingDetail() {
   const params = useParams();
   const navigate = useNavigate();
-  const listing = mockListings.find((l) => l.id === params.listingId);
+  const { listings } = useListingStore();
+  const listing = listings.find((l) => l.id === params.listingId);
   const [status, setStatus] = useState<ListingStatus>(listing?.status ?? 'draft');
   const [verification, setVerification] = useState<VerificationStatus>(listing?.verificationStatus ?? 'none');
+  const [activityState, setActivityState] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
+  const [activityFeed, setActivityFeed] = useState<ReturnType<typeof listListingActivities>>([]);
+  const [openHouseDate, setOpenHouseDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return d.toISOString().slice(0, 10);
+  });
+  const [openHouseTime, setOpenHouseTime] = useState('12:00');
+  const [scheduling, setScheduling] = useState(false);
 
   if (!listing) {
     return (
@@ -103,6 +117,103 @@ export default function AgentListingDetail() {
   };
 
   const VerificationIcon = verificationConfig[verification].icon;
+
+  const scheduleOpenHouse = () => {
+    if (!listing) return;
+    setScheduling(true);
+    try {
+      const [hours, minutes] = openHouseTime.split(':').map(Number);
+      const date = new Date(openHouseDate);
+      date.setHours(hours || 12, minutes || 0, 0, 0);
+      const pseudoLead = {
+        id: `open-house-${listing.id}`,
+        firstName: 'Open House',
+        lastName: listing.address.street,
+        stage: 'appointment_set' as const,
+        temperature: 'warm' as const,
+        assignedTo: listing.agentId,
+        source: 'manual' as const,
+        interestedIn: 'buy' as const,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const apt = addAppointment({
+        scheduledAt: date,
+        duration: 90,
+        leadId: pseudoLead.id,
+        lead: pseudoLead as any,
+        agentId: listing.agentId,
+        listingId: listing.id,
+        listing,
+        type: 'open_house',
+        status: 'pending',
+        location: listing.address.street,
+        notes: 'Open house auto-creado desde listing',
+      });
+      addNotification({
+        type: 'appointment',
+        title: 'Open house creado',
+        body: `${listing.address.street} · ${date.toLocaleString()}`,
+        actionUrl: '/agents/calendar',
+      });
+      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'openhouse.create', listingId: listing.id, appointmentId: apt.id } }));
+      toast({ title: 'Open house programado', description: 'Se añadió al calendario (mock local).' });
+      setScheduling(false);
+    } catch (e) {
+      setScheduling(false);
+      toast({ title: 'Error', description: 'No se pudo crear el open house', variant: 'destructive' });
+    }
+  };
+
+  const handleShowingTime = () => {
+    if (!listing) return;
+    const integrations = listIntegrations();
+    const st = integrations.find((i) => i.id === 'showingtime');
+    if (!st || st.status !== 'connected') {
+      toast({ title: 'Conecta ShowingTime', description: 'Ve a Integraciones para autorizar.', variant: 'destructive' });
+      window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_error', integration: 'showingtime', reason: 'not_connected' } }));
+      return;
+    }
+    const date = new Date();
+    date.setHours(date.getHours() + 48);
+    addAppointment({
+      scheduledAt: date,
+      duration: 30,
+      leadId: `showing-${listing.id}`,
+      agentId: listing.agentId,
+      listingId: listing.id,
+      listing,
+      type: 'consultation',
+      status: 'pending',
+      location: listing.address.street,
+    });
+    addNotification({
+      type: 'appointment',
+      title: 'Visita en ShowingTime (mock)',
+      body: listing.address.street,
+      actionUrl: '/agents/calendar',
+    });
+    toast({ title: 'Cita creada (mock)', description: 'Mostrada en Calendario.' });
+    window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_start', integration: 'showingtime', listingId: listing.id } }));
+  };
+
+  useEffect(() => {
+    try {
+      if (!listing) {
+        setActivityState('empty');
+        return;
+      }
+      const events = listListingActivities(listing.id);
+      if (!events.length) {
+        setActivityState('empty');
+      } else {
+        setActivityFeed(events);
+        setActivityState('success');
+      }
+    } catch (e) {
+      setActivityState('error');
+    }
+  }, [listing?.id]);
 
   return (
     <motion.div
@@ -211,6 +322,52 @@ export default function AgentListingDetail() {
         {/* Details */}
         <motion.div variants={staggerItem} className="lg:col-span-2 space-y-4">
           <Card>
+            <CardHeader className="flex items-center justify-between">
+              <CardTitle className="text-base">Actividad del listing</CardTitle>
+              <Badge variant="outline">{activityFeed.length} eventos</Badge>
+            </CardHeader>
+            <CardContent>
+              {activityState === 'loading' && (
+                <p className="text-sm text-muted-foreground">Cargando actividad…</p>
+              )}
+              {activityState === 'error' && (
+                <p className="text-sm text-destructive">Error al cargar el feed. Reintenta.</p>
+              )}
+              {activityState === 'empty' && (
+                <div className="text-sm text-muted-foreground space-y-2">
+                  <p>No hay actividad aún.</p>
+                  <p className="text-xs">Tip: comparte el listing o actívalo para generar visitas.</p>
+                </div>
+              )}
+              {activityState === 'success' && (
+                <div className="space-y-3">
+                  {activityFeed.map((event) => (
+                    <div key={event.id} className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
+                      <Badge variant="secondary" className="capitalize">
+                        {event.type}
+                      </Badge>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {event.type === 'view' && 'Nueva vista'}
+                          {event.type === 'save' && 'Guardado en favoritos'}
+                          {event.type === 'unsave' && 'Favorito removido'}
+                          {event.type === 'inquiry' && 'Nueva consulta'}
+                          {event.type === 'share' && 'Compartido'}
+                        </p>
+                        {event.metadata?.message && (
+                          <p className="text-sm text-muted-foreground">{String(event.metadata.message)}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {event.createdAt.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
             <CardHeader>
               <CardTitle className="text-base">Detalles</CardTitle>
             </CardHeader>
@@ -232,6 +389,16 @@ export default function AgentListingDetail() {
                   ))}
                 </div>
               )}
+
+              <div className="flex items-center gap-3 mt-4">
+                <BoostDialog listingId={listing.id} cost={10} />
+                <BuyCreditsDialog onPurchase={(credits) => {
+                  // Local optimistic update: append ledger entry
+                  // For demo only; real backend would update
+                  // eslint-disable-next-line no-console
+                  console.log('purchased', credits);
+                }} />
+              </div>
             </CardContent>
           </Card>
 
@@ -295,6 +462,41 @@ export default function AgentListingDetail() {
         <motion.div variants={staggerItem} className="space-y-4">
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">Programar Open House</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Fecha</p>
+                  <input
+                    type="date"
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    value={openHouseDate}
+                    onChange={(e) => setOpenHouseDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Hora</p>
+                  <input
+                    type="time"
+                    className="w-full rounded-md border px-3 py-2 text-sm"
+                    value={openHouseTime}
+                    onChange={(e) => setOpenHouseTime(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se creará un evento tipo “open_house” en Calendario con persistencia local (mock).
+              </p>
+              <Button className="w-full gap-2" onClick={scheduleOpenHouse} disabled={scheduling}>
+                {scheduling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Crear open house
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-base">Acciones rápidas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -303,6 +505,9 @@ export default function AgentListingDetail() {
               </Button>
               <Button variant="outline" className="w-full" onClick={() => handleBoost('7d')}>
                 Boost 7 días (50 créditos)
+              </Button>
+              <Button variant="outline" className="w-full" onClick={handleShowingTime}>
+                Programar con ShowingTime
               </Button>
               <Button variant="ghost" className="w-full" asChild>
                 <Link to="/agents/credits" className="gap-2">

@@ -50,6 +50,7 @@ const secondaryNavItems = [
   { title: 'Mapa (Plan)', url: '/agents/roadmap', icon: Map },
   { title: 'Notificaciones', url: '/agents/notifications', icon: Bell },
   { title: 'Tareas', url: '/agents/tasks', icon: AlarmClock, badgeKey: 'tasks' },
+  { title: 'Audit', url: '/agents/audit', icon: BarChart3 },
 ];
 
 const settingsItem = { title: 'Configuración', url: '/agents/settings', icon: Settings };

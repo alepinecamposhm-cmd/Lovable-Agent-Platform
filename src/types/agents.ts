@@ -195,7 +195,7 @@ export interface Appointment {
   completedAt?: Date;
 }
 
-export type AppointmentType = 'showing' | 'consultation' | 'listing_presentation' | 'closing';
+export type AppointmentType = 'showing' | 'consultation' | 'listing_presentation' | 'closing' | 'open_house';
 export type AppointmentStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
 
 // ============ LISTINGS ============
@@ -369,4 +369,14 @@ export interface AgentMetrics {
   conversionToAppointment: number;
   closedWonRate: number;
   healthScore: number;
+}
+
+// ============ FEEDBACK / CX ============
+export interface AgentFeedback {
+  id: string;
+  agentId: string;
+  rating: number; // 1-5
+  comment: string;
+  source: 'post_visit' | 'post_close' | 'survey';
+  createdAt: Date;
 }

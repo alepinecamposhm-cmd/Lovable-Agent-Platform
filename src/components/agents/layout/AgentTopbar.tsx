@@ -5,7 +5,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -64,34 +64,32 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
           {/* Notifications */}
           <Popover open={notificationsOpen} onOpenChange={setNotificationsOpen}>
             <PopoverTrigger asChild>
-              <TooltipProvider>
-                <Tooltip delayDuration={150}>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="relative">
-                      <Bell className="h-5 w-5" />
-                      <AnimatePresence>
-                        {unread > 0 && (
-                          <motion.span
-                            initial={{ scale: 0 }}
-                            animate={{ scale: 1.05 }}
-                            exit={{ scale: 0 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 22 }}
-                            className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground"
-                          >
-                            {unread}
-                          </motion.span>
-                        )}
-                      </AnimatePresence>
-                      {isQuietHoursNow() && (
-                        <span className="absolute -bottom-1 right-0 h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative">
+                    <Bell className="h-5 w-5" />
+                    <AnimatePresence>
+                      {unread > 0 && (
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1.05 }}
+                          exit={{ scale: 0 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                          className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground"
+                        >
+                          {unread}
+                        </motion.span>
                       )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="text-xs">
-                    {quietLabel}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+                    </AnimatePresence>
+                    {isQuietHoursNow() && (
+                      <span className="absolute -bottom-1 right-0 h-1.5 w-1.5 rounded-full bg-muted-foreground" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  {quietLabel}
+                </TooltipContent>
+              </Tooltip>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-80 p-0">
               <div className="flex items-center justify-between p-4 border-b">

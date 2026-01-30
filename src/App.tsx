@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import { AgentErrorBoundary } from "./AgentErrorBoundary";
 
 // Agent Platform
 import { AgentLayout } from "./components/agents/layout/AgentLayout";
@@ -34,7 +35,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           
           {/* Agent Platform Routes */}
-          <Route path="/agents" element={<AgentLayout />}>
+          <Route path="/agents" element={<AgentErrorBoundary><AgentLayout /></AgentErrorBoundary>}>
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<AgentOverview />} />
             <Route path="leads" element={<AgentLeads />} />

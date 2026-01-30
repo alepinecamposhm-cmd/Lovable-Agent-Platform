@@ -127,6 +127,7 @@ function persistQuiet() {
 }
 
 function emit() {
+  cachedSnapshot = null; // Invalidate cache to force new snapshot on next read
   listeners.forEach((l) => l());
 }
 
@@ -196,6 +197,37 @@ export function isQuietHoursNow(date = new Date()): boolean {
   return now >= start || now < end;
 }
 
+// Cache to prevent infinite re-renders (useSyncExternalStore needs stable object references)
+let cachedSnapshot: {
+  notifications: Notification[];
+  unread: number;
+  quietHours: QuietHoursState;
+} | null = null;
+
+function getSnapshot() {
+  const newNotifications = list();
+  const newUnread = getUnreadCount();
+  const newQuietHours = getQuietHoursState();
+
+  // Only create new object if data actually changed (check raw module-level state)
+  if (
+    !cachedSnapshot ||
+    notifications !== (cachedSnapshot as any)._rawNotifications || // compare raw array reference
+    cachedSnapshot.unread !== newUnread ||
+    quietHours !== (cachedSnapshot as any)._rawQuietHours // compare raw object reference
+  ) {
+    cachedSnapshot = {
+      notifications: newNotifications,
+      unread: newUnread,
+      quietHours: newQuietHours,
+      _rawNotifications: notifications, // store raw references for comparison
+      _rawQuietHours: quietHours,
+    } as any;
+  }
+
+  return cachedSnapshot;
+}
+
 export function useNotificationStore(): {
   notifications: Notification[];
   unread: number;
@@ -203,7 +235,7 @@ export function useNotificationStore(): {
 } {
   return useSyncExternalStore(
     subscribe,
-    () => ({ notifications: list(), unread: getUnreadCount(), quietHours: getQuietHoursState() }),
-    () => ({ notifications: list(), unread: getUnreadCount(), quietHours: getQuietHoursState() })
+    getSnapshot,
+    getSnapshot // SSR snapshot (same logic)
   );
 }

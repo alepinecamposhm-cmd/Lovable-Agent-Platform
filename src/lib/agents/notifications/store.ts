@@ -142,7 +142,7 @@ export function list(): Notification[] {
 
 export function add(input: Omit<Notification, 'id' | 'status' | 'createdAt'> & { createdAt?: Date }) {
   const notif: Notification = {
-    id: `notif-${crypto.randomUUID?.() || Date.now()}`,
+    id: `notif-${globalThis.crypto?.randomUUID?.() || Date.now()}`,
     status: 'unread',
     createdAt: input.createdAt ?? new Date(),
     ...input,

@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { mockAppointments } from '@/lib/agents/fixtures';
+import { mockAppointments, mockLeads } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { 
@@ -28,6 +28,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Appointment } from '@/types/agents';
+import { add as addNotification } from '@/lib/agents/notifications/store';
 
 const statusConfig = {
   pending: { label: 'Pendiente', color: 'bg-warning/10 text-warning border-warning/20' },
@@ -93,13 +94,41 @@ function AppointmentCard({ appointment }: { appointment: Appointment }) {
 export default function AgentCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date('2026-01-29'));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date('2026-01-29'));
+  const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments);
+  
+  const handleNewAppointment = () => {
+    const base = selectedDate || currentDate;
+    const scheduledAt = new Date(base);
+    scheduledAt.setHours(12, 0, 0, 0);
+    const lead = mockLeads.find((l) => l.stage !== 'closed') ?? mockLeads[0];
+    const apt: Appointment = {
+      id: `apt-${Date.now()}`,
+      leadId: lead.id,
+      lead,
+      agentId: 'agent-1',
+      type: 'showing',
+      status: 'confirmed',
+      scheduledAt,
+      duration: 60,
+      location: 'Por definir',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    setAppointments((prev) => [apt, ...prev]);
+    addNotification({
+      type: 'appointment',
+      title: 'Nueva cita creada',
+      body: `${lead.firstName} · ${format(scheduledAt, 'd MMM, HH:mm', { locale: es })}`,
+      actionUrl: '/agents/calendar',
+    });
+  };
   
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
   const getAppointmentsForDate = (date: Date) => {
-    return mockAppointments.filter(apt => 
+    return appointments.filter(apt => 
       isSameDay(apt.scheduledAt, date)
     );
   };
@@ -123,7 +152,7 @@ export default function AgentCalendar() {
             Gestiona tus citas y visitas
           </p>
         </div>
-        <Button>
+        <Button onClick={handleNewAppointment}>
           <Plus className="h-4 w-4 mr-2" />
           Nueva Cita
         </Button>
@@ -264,7 +293,7 @@ export default function AgentCalendar() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {mockAppointments
+                {appointments
                   .filter(apt => apt.status === 'confirmed' || apt.status === 'pending')
                   .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
                   .map((appointment) => (

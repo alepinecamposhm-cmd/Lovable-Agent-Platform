@@ -93,13 +93,10 @@ export interface Lead {
 export type LeadStage = 
   | 'new'
   | 'contacted'
-  | 'engaged'
   | 'appointment_set'
-  | 'met'
-  | 'negotiating'
-  | 'closed_won'
-  | 'closed_lost'
-  | 'archived';
+  | 'toured'
+  | 'closed'
+  | 'closed_lost';
 
 export type LeadSource = 
   | 'marketplace'

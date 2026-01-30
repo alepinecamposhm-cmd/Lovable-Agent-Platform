@@ -66,7 +66,14 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
             <PopoverTrigger asChild>
               <Tooltip delayDuration={150}>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative"
+                    aria-label={quietLabel}
+                    aria-expanded={notificationsOpen}
+                    aria-haspopup="true"
+                  >
                     <Bell className="h-5 w-5" />
                     <AnimatePresence>
                       {unread > 0 && (
@@ -103,7 +110,7 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                   Marcar todas leídas
                 </Button>
               </div>
-              <div className="max-h-80 overflow-y-auto">
+              <div className="max-h-80 overflow-y-auto" role="list" aria-label="Últimas notificaciones">
                 {notifications.map((notification) => (
                   <motion.div
                     key={notification.id}
@@ -113,6 +120,7 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                       'flex gap-3 p-4 border-b last:border-0 cursor-pointer hover:bg-muted/50 transition-colors',
                       notification.status === 'unread' && 'bg-primary/5'
                     )}
+                    role="listitem"
                     onClick={() => {
                       markRead(notification.id);
                       if (notification.actionUrl) navigate(notification.actionUrl);
@@ -133,7 +141,15 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                 ))}
               </div>
               <div className="p-2 border-t">
-                <Button variant="ghost" size="sm" className="w-full text-xs">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => {
+                    setNotificationsOpen(false);
+                    navigate('/agents/notifications');
+                  }}
+                >
                   Ver todas las notificaciones
                 </Button>
               </div>

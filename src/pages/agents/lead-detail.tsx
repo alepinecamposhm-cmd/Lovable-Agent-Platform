@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -45,7 +45,6 @@ import { toast } from '@/components/ui/use-toast';
 import {
   mockAppointments,
   mockLeadActivities,
-  mockLeads,
   mockTasks,
 } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
@@ -53,17 +52,16 @@ import { cn } from '@/lib/utils';
 import type { Lead, LeadActivity, LeadStage } from '@/types/agents';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useLeadStore, updateLeadStage } from '@/lib/agents/leads/store';
+import { add as addNotification } from '@/lib/agents/notifications/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string }> = {
-  new: { label: 'Nuevo', color: 'bg-blue-500' },
+  new: { label: 'New', color: 'bg-blue-500' },
   contacted: { label: 'Contactado', color: 'bg-purple-500' },
-  engaged: { label: 'En charla', color: 'bg-amber-500' },
-  appointment_set: { label: 'Cita agendada', color: 'bg-teal-500' },
-  met: { label: 'Reunidos', color: 'bg-indigo-500' },
-  negotiating: { label: 'Negociando', color: 'bg-orange-500' },
-  closed_won: { label: 'Cerrado ✓', color: 'bg-green-500' },
-  closed_lost: { label: 'Perdido', color: 'bg-gray-500' },
-  archived: { label: 'Archivado', color: 'bg-gray-400' },
+  appointment_set: { label: 'Appointment Set', color: 'bg-teal-500' },
+  toured: { label: 'Toured', color: 'bg-indigo-500' },
+  closed: { label: 'Closed', color: 'bg-green-500' },
+  closed_lost: { label: 'Closed Lost', color: 'bg-gray-500' },
 };
 
 const activityIcon: Record<
@@ -90,10 +88,15 @@ const temperatureLabel = {
 export default function AgentLeadDetail() {
   const params = useParams();
   const navigate = useNavigate();
-  const lead = mockLeads.find((l) => l.id === params.leadId);
+  const { leads } = useLeadStore();
+  const lead = leads.find((l) => l.id === params.leadId);
   const [stage, setStage] = useState<LeadStage>(lead?.stage ?? 'new');
   const [noteDraft, setNoteDraft] = useState('');
   const [taskDraft, setTaskDraft] = useState('');
+
+  useEffect(() => {
+    if (lead) setStage(lead.stage);
+  }, [lead?.stage]);
 
   if (!lead) {
     return (
@@ -133,6 +136,15 @@ export default function AgentLeadDetail() {
 
   const handleStageChange = (value: LeadStage) => {
     setStage(value);
+    if (lead) {
+      updateLeadStage(lead.id, value);
+      addNotification({
+        type: value === 'appointment_set' ? 'appointment' : 'lead',
+        title: value === 'appointment_set' ? 'Cita programada' : 'Etapa de lead actualizada',
+        body: `${lead.firstName} ahora está en ${stageConfig[value].label}`,
+        actionUrl: `/agents/leads/${lead.id}`,
+      });
+    }
     toast({
       title: 'Etapa actualizada',
       description: `Moviste el lead a ${stageConfig[value].label}`,

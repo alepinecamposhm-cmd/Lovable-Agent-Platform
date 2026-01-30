@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Conversation, Message } from '@/types/agents';
+import { add as addNotification, markRead as markNotificationRead, useNotificationStore } from '@/lib/agents/notifications/store';
 
 const templates = [
   { id: 't1', label: 'Saludo inicial', content: '¡Hola! Gracias por tu interés. Estoy aquí para ayudarte a encontrar tu propiedad ideal.' },
@@ -133,32 +134,107 @@ function ConversationItem({
 }
 
 export default function AgentInbox() {
+  const { notifications } = useNotificationStore();
+  const [conversations, setConversations] = useState<Conversation[]>(mockConversations);
+  const [messages, setMessages] = useState<Message[]>(mockMessages);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(
     mockConversations[0]
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [messageInput, setMessageInput] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
+  const [onlyUnreadConv, setOnlyUnreadConv] = useState(false);
 
-  const filteredConversations = mockConversations.filter(conv =>
+  const filteredConversations = conversations.filter(conv =>
     conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     conv.lead?.lastName?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ).filter(conv => !onlyUnreadConv || (conv.unreadCount ?? 0) > 0);
 
-  const conversationMessages = mockMessages.filter(
+  const conversationMessages = messages.filter(
     msg => msg.conversationId === selectedConversation?.id
   );
 
   const handleSendMessage = () => {
-    if (!messageInput.trim()) return;
-    // In real app, would send to API
-    console.log('Sending message:', messageInput);
+    if (!messageInput.trim() || !selectedConversation) return;
+    const now = new Date();
+    const outgoing: Message = {
+      id: `msg-${Date.now()}`,
+      conversationId: selectedConversation.id,
+      senderId: mockAgent.id,
+      senderType: 'agent',
+      content: messageInput.trim(),
+      contentType: 'text',
+      status: 'sent',
+      createdAt: now,
+    };
+
+    setMessages((prev) => [...prev, outgoing]);
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.id === selectedConversation.id
+          ? { ...conv, lastMessage: outgoing, updatedAt: now }
+          : conv
+      )
+    );
+    setSelectedConversation((prev) =>
+      prev && prev.id === selectedConversation.id ? { ...prev, lastMessage: outgoing, updatedAt: now } : prev
+    );
     setMessageInput('');
+
+    // Simula respuesta del lead para demo + trigger de notificación
+    setTimeout(() => {
+      const incoming: Message = {
+        id: `msg-${Date.now() + 1}`,
+        conversationId: selectedConversation.id,
+        senderId: selectedConversation.leadId,
+        senderType: 'lead',
+        content: '¡Recibido! ¿Puedes compartir el brochure?',
+        contentType: 'text',
+        status: 'delivered',
+        createdAt: new Date(),
+      };
+      setMessages((prev) => [...prev, incoming]);
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === selectedConversation.id
+            ? {
+                ...conv,
+                lastMessage: incoming,
+                updatedAt: new Date(),
+                unreadCount: (conv.unreadCount || 0) + 1,
+              }
+            : conv
+        )
+      );
+      setSelectedConversation((prev) =>
+        prev && prev.id === selectedConversation.id
+          ? { ...prev, lastMessage: incoming, updatedAt: new Date(), unreadCount: (prev.unreadCount || 0) + 1 }
+          : prev
+      );
+      addNotification({
+        type: 'message',
+        title: `Nuevo mensaje de ${selectedConversation.lead?.firstName}`,
+        body: incoming.content,
+        actionUrl: `/agents/leads/${selectedConversation.leadId}`,
+      });
+    }, 700);
   };
 
   const handleTemplateSelect = (content: string) => {
     setMessageInput(content);
     setShowTemplates(false);
+  };
+
+  const handleSelectConversation = (conversation: Conversation) => {
+    setSelectedConversation(conversation);
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.id === conversation.id ? { ...conv, unreadCount: 0 } : conv
+      )
+    );
+    notifications
+      .filter((n) => n.actionUrl?.includes(conversation.leadId))
+      .forEach((n) => markNotificationRead(n.id));
   };
 
   return (
@@ -191,6 +267,15 @@ export default function AgentInbox() {
                 className="pl-9"
               />
             </div>
+            <div className="flex gap-2 mt-2">
+              <Badge
+                variant={onlyUnreadConv ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => setOnlyUnreadConv((v) => !v)}
+              >
+                Solo no leídos
+              </Badge>
+            </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1">
@@ -199,7 +284,7 @@ export default function AgentInbox() {
                   key={conversation.id}
                   conversation={conversation}
                   isActive={selectedConversation?.id === conversation.id}
-                  onClick={() => setSelectedConversation(conversation)}
+                  onClick={() => handleSelectConversation(conversation)}
                 />
               ))}
               {filteredConversations.length === 0 && (

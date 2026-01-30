@@ -58,10 +58,10 @@ const kpiCards = [
 
 const funnelData = [
   { name: 'Leads nuevos', value: mockLeads.length },
-  { name: 'Contactados', value: mockLeads.filter((l) => l.stage !== 'new').length },
+  { name: 'Contactados', value: mockLeads.filter((l) => l.stage === 'contacted').length },
   { name: 'Cita agendada', value: mockLeads.filter((l) => l.stage === 'appointment_set').length },
-  { name: 'Reunidos', value: mockLeads.filter((l) => l.stage === 'met').length },
-  { name: 'Cerrados', value: mockLeads.filter((l) => l.stage === 'closed_won').length },
+  { name: 'Visitas (Toured)', value: mockLeads.filter((l) => l.stage === 'toured').length },
+  { name: 'Cerrados', value: mockLeads.filter((l) => l.stage === 'closed').length },
 ];
 
 const weeklyActivity = [

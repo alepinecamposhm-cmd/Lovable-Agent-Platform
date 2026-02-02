@@ -17,6 +17,7 @@ export interface Notification {
   type: NotificationType;
   title: string;
   body: string;
+  costCredits?: number;
   actionUrl?: string;
   createdAt: Date;
   status: NotificationStatus;
@@ -71,6 +72,7 @@ const seed: Notification[] = [
     type: 'lead',
     title: 'Nuevo lead asignado',
     body: 'Roberto Hernández está interesado en comprar',
+    costCredits: 5,
     actionUrl: '/agents/leads/lead-2',
     createdAt: new Date('2026-01-27T08:00:00'),
     status: 'read',

@@ -32,6 +32,8 @@ import { add as addNotification } from '@/lib/agents/notifications/store';
 import { listIntegrations } from '@/lib/agents/integrations/store';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
+import { useConsumeCredits, useCreditAccount } from '@/lib/credits/query';
+import { InsufficientCreditsDialog } from '@/components/agents/credits/InsufficientCreditsDialog';
 import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
 
 const statusConfig: Record<ListingStatus, { label: string; color: string; pill: string }> = {
@@ -58,6 +60,11 @@ export default function AgentListingDetail() {
   const listing = listings.find((l) => l.id === params.listingId);
   const [status, setStatus] = useState<ListingStatus>(listing?.status ?? 'draft');
   const [verification, setVerification] = useState<VerificationStatus>(listing?.verificationStatus ?? 'none');
+  const isFeatured = listing?.featuredUntil && listing.featuredUntil > new Date();
+  const featuredDays = isFeatured ? Math.max(1, Math.ceil((listing.featuredUntil!.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
+  const { mutateAsync: consumeCredits } = useConsumeCredits();
+  const { data: creditAccount } = useCreditAccount();
+  const [blockModal, setBlockModal] = useState<{ open: boolean; variant: 'balance' | 'daily_limit' | 'rule_disabled'; meta?: { dailyLimit?: number; spentToday?: number } }>({ open: false, variant: 'balance' });
   const [activityState, setActivityState] = useState<'loading' | 'success' | 'empty' | 'error'>('loading');
   const [activityFeed, setActivityFeed] = useState<ReturnType<typeof listListingActivities>>([]);
   const [openHouseDate, setOpenHouseDate] = useState(() => {
@@ -93,19 +100,47 @@ export default function AgentListingDetail() {
     [listing]
   );
 
-  const handleBoost = (duration: '24h' | '7d') => {
-    toast({
-      title: `Boost ${duration} activado`,
-      description: 'Tu listing subirá posiciones y notificaremos a leads compatibles.',
-    });
-  };
-
-  const handleVerify = () => {
-    setVerification('pending');
-    toast({
-      title: 'Solicitud enviada',
-      description: 'Equipo de verificación revisará la evidencia en &lt;24h.',
-    });
+  const handleVerify = async () => {
+    const rule = creditAccount?.rules.find((r) => r.action === 'verification_request');
+    const cost = rule?.cost ?? 15;
+    if (rule && !rule.isEnabled) {
+      setBlockModal({ open: true, variant: 'rule_disabled' });
+      return;
+    }
+    try {
+      const { account } = await consumeCredits({
+        accountId: 'credit-1',
+        amount: cost,
+        action: 'verification_request',
+        referenceType: 'listing',
+        referenceId: listing?.id,
+      });
+      setVerification('pending');
+      toast({
+        title: 'Solicitud enviada',
+        description: `Se descontaron ${cost} créditos.`,
+      });
+      addNotification({
+        type: 'listing',
+        title: 'Verificación en curso',
+        body: `${listing?.address.street}`,
+        actionUrl: listing ? `/agents/listings/${listing.id}` : undefined,
+        createdAt: new Date(),
+        status: 'unread',
+      });
+    } catch (e) {
+      const err = e as Error & { meta?: { dailyLimit?: number; spentToday?: number } };
+      const message = err.message || String(err);
+      if (message === 'Error: INSUFFICIENT_BALANCE' || message === 'INSUFFICIENT_BALANCE') {
+        setBlockModal({ open: true, variant: 'balance' });
+      } else if (message === 'Error: DAILY_LIMIT' || message === 'DAILY_LIMIT') {
+        setBlockModal({ open: true, variant: 'daily_limit', meta: err.meta });
+      } else if (message === 'Error: RULE_DISABLED' || message === 'RULE_DISABLED') {
+        setBlockModal({ open: true, variant: 'rule_disabled' });
+      } else {
+        toast({ title: 'No se pudo enviar verificación', variant: 'destructive' });
+      }
+    }
   };
 
   const handleStatus = (newStatus: ListingStatus) => {
@@ -117,6 +152,8 @@ export default function AgentListingDetail() {
   };
 
   const VerificationIcon = verificationConfig[verification].icon;
+  const boost24Cost = creditAccount?.rules.find((r) => r.action === 'boost_24h')?.cost ?? 10;
+  const boost7Cost = creditAccount?.rules.find((r) => r.action === 'boost_7d')?.cost ?? 50;
 
   const scheduleOpenHouse = () => {
     if (!listing) return;
@@ -216,6 +253,7 @@ export default function AgentListingDetail() {
   }, [listing?.id]);
 
   return (
+    <>
     <motion.div
       variants={staggerContainer}
       initial="hidden"
@@ -248,13 +286,15 @@ export default function AgentListingDetail() {
             <VerificationIcon className={cn('h-4 w-4', verificationConfig[verification].color)} />
             {verificationConfig[verification].label}
           </Badge>
+          {isFeatured && (
+            <Badge className="bg-warning text-warning-foreground gap-1">
+              <Zap className="h-3 w-3" />
+              Destacado · {featuredDays}d
+            </Badge>
+          )}
           <Button variant="outline" size="sm" className="gap-2" onClick={handleVerify}>
             <Upload className="h-4 w-4" />
             Verificar
-          </Button>
-          <Button size="sm" className="gap-2" onClick={() => handleBoost('24h')}>
-            <Zap className="h-4 w-4" />
-            Boost 24h
           </Button>
         </motion.div>
       </div>
@@ -391,13 +431,14 @@ export default function AgentListingDetail() {
               )}
 
               <div className="flex items-center gap-3 mt-4">
-                <BoostDialog listingId={listing.id} cost={10} />
-                <BuyCreditsDialog onPurchase={(credits) => {
-                  // Local optimistic update: append ledger entry
-                  // For demo only; real backend would update
-                  // eslint-disable-next-line no-console
-                  console.log('purchased', credits);
-                }} />
+                <BoostDialog
+                  listingId={listing.id}
+                  options={[
+                    { label: 'Boost 24h', cost: boost24Cost, action: 'boost_24h', durationHours: 24 },
+                    { label: 'Boost 7 días', cost: boost7Cost, action: 'boost_7d', durationHours: 24 * 7 },
+                  ]}
+                />
+                <BuyCreditsDialog />
               </div>
             </CardContent>
           </Card>
@@ -531,6 +572,14 @@ export default function AgentListingDetail() {
         </motion.div>
       </div>
     </motion.div>
+  <InsufficientCreditsDialog
+    open={blockModal.open}
+    variant={blockModal.variant}
+    onClose={() => setBlockModal({ ...blockModal, open: false })}
+    onRecharge={() => window.location.assign('/agents/credits')}
+    meta={blockModal.meta}
+  />
+    </>
   );
 }
 

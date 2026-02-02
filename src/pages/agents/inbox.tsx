@@ -27,6 +27,7 @@ import type { Conversation, Message } from '@/types/agents';
 import { add as addNotification, markRead as markNotificationRead, useNotificationStore } from '@/lib/agents/notifications/store';
 import { addTask } from '@/lib/agents/tasks/store';
 import { toast } from '@/components/ui/use-toast';
+import { getCurrentUser } from '@/lib/agents/team/store';
 
 const templates = [
   { id: 't1', label: 'Saludo inicial', content: '¡Hola! Gracias por tu interés. Estoy aquí para ayudarte a encontrar tu propiedad ideal.' },
@@ -159,11 +160,29 @@ export default function AgentInbox() {
   const [onlyUnreadConv, setOnlyUnreadConv] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [viewAllTeam, setViewAllTeam] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('agenthub_view_all_inbox') === 'true';
+  });
+  const currentUser = getCurrentUser();
+  const canViewTeam = currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'broker';
 
-  const filteredConversations = conversations.filter(conv =>
-    conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.lead?.lastName?.toLowerCase().includes(searchQuery.toLowerCase())
-  ).filter(conv => !onlyUnreadConv || (conv.unreadCount ?? 0) > 0);
+  const filteredConversations = conversations
+    .filter((conv) => {
+      const matchesSearch =
+        conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        conv.lead?.lastName?.toLowerCase().includes(searchQuery.toLowerCase());
+      const allowed =
+        viewAllTeam && canViewTeam
+          ? true
+          : conv.lead?.assignedTo === currentUser.id;
+      return matchesSearch && allowed;
+    })
+    .filter((conv) => !onlyUnreadConv || (conv.unreadCount ?? 0) > 0);
+
+  if (!canViewTeam && viewAllTeam) {
+    setViewAllTeam(false);
+  }
 
   const conversationMessages = messages.filter(
     msg => msg.conversationId === selectedConversation?.id
@@ -318,7 +337,20 @@ export default function AgentInbox() {
                 className="pl-9"
               />
             </div>
-            <div className="flex gap-2 mt-2">
+            <div className="flex gap-2 mt-2 items-center">
+              {canViewTeam && (
+                <Button
+                  size="sm"
+                  variant={viewAllTeam ? 'default' : 'outline'}
+                  onClick={() => {
+                    const next = !viewAllTeam;
+                    setViewAllTeam(next);
+                    if (typeof window !== 'undefined') window.localStorage.setItem('agenthub_view_all_inbox', String(next));
+                  }}
+                >
+                  Ver {viewAllTeam ? 'mis' : 'equipo'}
+                </Button>
+              )}
               <Badge
                 variant={onlyUnreadConv ? 'default' : 'outline'}
                 className="cursor-pointer"
@@ -327,6 +359,14 @@ export default function AgentInbox() {
                 Solo no leídos
               </Badge>
             </div>
+            {!canViewTeam && (
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Solo brokers/admin pueden ver conversaciones del equipo.
+              </p>
+            )}
+            {viewAllTeam && (
+              <p className="text-[11px] text-muted-foreground mt-1">Modo equipo activo. Filtra o selecciona una conversación.</p>
+            )}
           </div>
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1">

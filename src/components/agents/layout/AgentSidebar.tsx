@@ -34,6 +34,8 @@ import { cn } from '@/lib/utils';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useTaskStore } from '@/lib/agents/tasks/store';
+import { getCurrentUser } from '@/lib/agents/team/store';
+import { getRoutingAlert } from '@/lib/agents/routing/store';
 
 const mainNavItems = [
   { title: 'Dashboard', url: '/agents/overview', icon: LayoutDashboard },
@@ -45,7 +47,6 @@ const mainNavItems = [
 
 const secondaryNavItems = [
   { title: 'Créditos', url: '/agents/credits', icon: CreditCard },
-  { title: 'Equipo', url: '/agents/team', icon: UsersRound },
   { title: 'Reportes', url: '/agents/reports', icon: BarChart3 },
   { title: 'Mapa (Plan)', url: '/agents/roadmap', icon: Map },
   { title: 'Notificaciones', url: '/agents/notifications', icon: Bell },
@@ -60,6 +61,7 @@ export function AgentSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
   const { pending: pendingTasks } = useTaskStore();
+  const currentUser = getCurrentUser();
 
   const isActive = (url: string) => location.pathname.startsWith(url);
 
@@ -144,7 +146,12 @@ export function AgentSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {secondaryNavItems.map((item) => (
+              {[{ title: 'Equipo', url: '/agents/team', icon: UsersRound },
+                ...secondaryNavItems].map((item) => {
+                  if (item.title === 'Equipo' && !(currentUser.role === 'owner' || currentUser.role === 'admin')) {
+                    return null;
+                  }
+                  return (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -161,7 +168,12 @@ export function AgentSidebar() {
                       )}
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
-                      {!isCollapsed && <span>{item.title}</span>}
+                      {!isCollapsed && (
+                        <span className="flex items-center gap-1">
+                          {item.title}
+                          {item.title === 'Equipo' && getRoutingAlert() && <span className="h-2 w-2 rounded-full bg-destructive inline-block" />}
+                        </span>
+                      )}
                       {item.badgeKey === 'tasks' && pendingTasks > 0 && !isCollapsed && (
                         <motion.span
                           initial={{ scale: 0 }}
@@ -179,7 +191,8 @@ export function AgentSidebar() {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ))}
+                  );
+                })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

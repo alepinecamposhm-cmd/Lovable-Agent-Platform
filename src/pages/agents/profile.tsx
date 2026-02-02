@@ -11,6 +11,7 @@ import { CheckCircle, Globe2, Loader2, Share2, Sparkles, Star } from 'lucide-rea
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { listAgents, getAgent, getProfileState, toggleChecklist } from '@/lib/agents/profile/store';
 import type { Agent } from '@/types/agents';
+import { togglePauseAgent, getPausedAgents } from '@/lib/agents/routing/store';
 
 export default function AgentProfilePage() {
   const params = useParams();
@@ -19,6 +20,7 @@ export default function AgentProfilePage() {
   const [agent, setAgent] = useState<Agent | undefined>();
   const [completion, setCompletion] = useState(getProfileState().completion);
   const [checklist, setChecklist] = useState(getProfileState().checklist);
+  const [paused, setPaused] = useState<boolean>(getPausedAgents().has(getAgent(params.agentId || '')?.id || 'agent-1'));
 
   useEffect(() => {
     const found = getAgent(params.agentId);
@@ -27,6 +29,7 @@ export default function AgentProfilePage() {
       return;
     }
     setAgent(found);
+    setPaused(getPausedAgents().has(found.id));
     setState('success');
     window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'profile.view', agentId: found.id } }));
   }, [params.agentId]);
@@ -163,6 +166,32 @@ export default function AgentProfilePage() {
             <InfoItem label="Zonas" value={agent.zones?.map((z) => z.name).join(', ')} />
             <InfoItem label="Especialidades" value={agent.specialties?.join(', ')} />
             <InfoItem label="Estado" value={agent.status} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Disponibilidad</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+              <div>
+                <p className="text-sm font-medium">Recibir nuevos leads</p>
+                <p className="text-xs text-muted-foreground">Pausa cuando estés de vacaciones.</p>
+              </div>
+              <Button
+                variant={paused ? 'outline' : 'default'}
+                onClick={() => {
+                  const next = !paused;
+                  togglePauseAgent(agent.id, next);
+                  setPaused(next);
+                  window.dispatchEvent(new CustomEvent('analytics', { detail: { event: next ? 'team.self_pause_off' : 'team.self_pause_on', agentId: agent.id } }));
+                }}
+              >
+                {paused ? 'Pausado' : 'Activo'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Esto actualiza el ruteo para que no recibas asignaciones nuevas.</p>
           </CardContent>
         </Card>
 

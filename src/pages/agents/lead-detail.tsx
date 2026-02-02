@@ -19,6 +19,7 @@ import {
   TrendingUp,
   UserRound,
   Briefcase,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +57,8 @@ import { useLeadStore, updateLeadNotes, updateLeadStage, updateLeadTags } from '
 import { add as addNotification } from '@/lib/agents/notifications/store';
 import { addTask, completeTask, undoCompleteTask, useTaskStore } from '@/lib/agents/tasks/store';
 import { listIntegrations } from '@/lib/agents/integrations/store';
+import { useTeamStore, getCurrentUser } from '@/lib/agents/team/store';
+import { reassignLead } from '@/lib/agents/leads/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string }> = {
   new: { label: 'New', color: 'bg-blue-500' },
@@ -92,11 +95,15 @@ export default function AgentLeadDetail() {
   const navigate = useNavigate();
   const { leads } = useLeadStore();
   const { tasks } = useTaskStore();
+  const { members } = useTeamStore();
   const lead = leads.find((l) => l.id === params.leadId);
   const [stage, setStage] = useState<LeadStage>(lead?.stage ?? 'new');
   const [noteDraft, setNoteDraft] = useState(lead?.notes || '');
   const [taskDraft, setTaskDraft] = useState('');
   const [tagDraft, setTagDraft] = useState('');
+  const [assignee, setAssignee] = useState<string>(lead?.assignedTo || members[0]?.id || '');
+  const [isAssigning, setIsAssigning] = useState(false);
+  const currentUser = getCurrentUser();
 
   useEffect(() => {
     if (lead) setStage(lead.stage);
@@ -142,6 +149,8 @@ export default function AgentLeadDetail() {
     [lead.id]
   );
 
+  const canManageAssignments = currentUser.role === 'owner' || currentUser.role === 'admin';
+
   const currentStageConfig = stageConfig[stage];
 
   const handleStageChange = (value: LeadStage) => {
@@ -159,6 +168,25 @@ export default function AgentLeadDetail() {
       title: 'Etapa actualizada',
       description: `Moviste el lead a ${stageConfig[value].label}`,
     });
+  };
+
+  const handleReassign = async () => {
+    if (!lead) return;
+    setIsAssigning(true);
+    reassignLead(lead.id, assignee);
+    addNotification({
+      type: 'lead',
+      title: 'Lead reasignado',
+      body: `${lead.firstName} fue asignado a ${members.find((m) => m.id === assignee)?.firstName || 'agente'}`,
+      actionUrl: `/agents/leads/${lead.id}`,
+    });
+    try {
+      await fetch('/api/analytics', { method: 'POST', body: JSON.stringify({ event: 'team.lead_reassigned', properties: { leadId: lead.id, to: assignee } }) });
+    } catch (_) {
+      // ignore
+    }
+    toast({ title: 'Asignación actualizada', description: 'El lead fue reasignado.' });
+    setIsAssigning(false);
   };
 
   const handleAddNote = () => {
@@ -345,6 +373,42 @@ export default function AgentLeadDetail() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {canManageAssignments && (
+        <Card className="border-primary/40">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <UserRound className="h-4 w-4 text-primary" />
+              Asignación
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Lead asignado a</p>
+              <p className="font-semibold">{members.find((m) => m.id === assignee)?.firstName || '—'}</p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Select value={assignee} onValueChange={setAssignee}>
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="Selecciona agente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.firstName} {m.lastName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button onClick={handleReassign} disabled={isAssigning || assignee === lead.assignedTo}>
+                {isAssigning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Guardar
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Al reasignar, se notifica al nuevo agente y se actualiza el inbox/pipeline.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left column */}

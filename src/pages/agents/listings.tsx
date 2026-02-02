@@ -59,6 +59,10 @@ function ListingCard({ listing }: { listing: Listing }) {
   const status = statusConfig[listing.status];
   const verification = verificationConfig[listing.verificationStatus];
   const VerificationIcon = verification.icon;
+  const isFeatured = listing.featuredUntil && listing.featuredUntil > new Date();
+  const remainingDays = isFeatured
+    ? Math.max(1, Math.ceil((listing.featuredUntil!.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : 0;
 
   const [showVerify, setShowVerify] = useState(false);
   const [showBoost, setShowBoost] = useState(false);
@@ -93,6 +97,12 @@ function ListingCard({ listing }: { listing: Listing }) {
                 <Badge className="bg-success text-success-foreground">
                   <CheckCircle className="h-3 w-3 mr-1" />
                   Verificado
+                </Badge>
+              )}
+              {isFeatured && (
+                <Badge className="bg-warning text-warning-foreground border-warning/40">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Destacado · {remainingDays}d
                 </Badge>
               )}
             </div>

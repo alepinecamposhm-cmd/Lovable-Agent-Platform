@@ -4,12 +4,14 @@ export interface AuditEvent {
   actor?: string;
   payload?: Record<string, any>;
   createdAt: string;
+  domain?: 'team' | 'auth' | 'system';
 }
 
 const STORAGE_KEY = 'agent_audit_events_v1';
 
 export function listAuditEvents(): AuditEvent[] {
   try {
+    if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as AuditEvent[];
@@ -20,6 +22,7 @@ export function listAuditEvents(): AuditEvent[] {
 }
 
 export function addAuditEvent(event: Omit<AuditEvent, 'id' | 'createdAt'>) {
+  if (typeof window === 'undefined') return null;
   const current = listAuditEvents();
   const full = {
     id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -35,5 +38,6 @@ export function addAuditEvent(event: Omit<AuditEvent, 'id' | 'createdAt'>) {
 }
 
 export function clearAuditEvents() {
+  if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEY);
 }

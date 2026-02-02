@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   DndContext,
@@ -29,6 +29,7 @@ import {
   Mail,
   ChevronRight,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,10 @@ import { ToastAction } from '@/components/ui/toast';
 import { matchAgent } from '@/lib/agents/routing/store';
 import { mockTeamAgents } from '@/lib/agents/fixtures';
 import { addTask } from '@/lib/agents/tasks/store';
+import { getCurrentUser, listMembers, subscribe as subscribeTeam } from '@/lib/agents/team/store';
+import { useConsumeCredits } from '@/lib/credits/query';
+import { InsufficientCreditsDialog } from '@/components/agents/credits/InsufficientCreditsDialog';
+import { useCreditAccount } from '@/lib/credits/query';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -60,14 +65,27 @@ const stageConfig: Record<LeadStage, { label: string; color: string; helper?: st
 };
 
 const pipelineStages: LeadStage[] = ['new', 'contacted', 'appointment_set', 'toured', 'closed'];
+const LEAD_ACCEPT_COST = 2;
+
+const track = (event: string, properties?: Record<string, unknown>) => {
+  fetch('/api/analytics', {
+    method: 'POST',
+    body: JSON.stringify({ event, properties }),
+  }).catch(() => {});
+};
 
 interface LeadCardProps {
   lead: Lead;
   unread: boolean;
   isDragging?: boolean;
+  onAccept?: (lead: Lead) => void;
+  accepting?: boolean;
+  acceptCost?: number;
+  assigneeName?: string;
+  flash?: boolean;
 }
 
-function LeadCard({ lead, unread, isDragging }: LeadCardProps) {
+function LeadCard({ lead, unread, isDragging, onAccept, accepting, acceptCost, assigneeName, flash }: LeadCardProps) {
   const {
     attributes,
     listeners,
@@ -123,6 +141,11 @@ function LeadCard({ lead, unread, isDragging }: LeadCardProps) {
           </div>
         </div>
         <div className="flex gap-1 items-center">
+          {assigneeName && (
+            <Badge variant="outline" className={cn('text-[10px]', flash && 'bg-primary/20 border-primary/30 animate-pulse')}>
+              Asignado a {assigneeName}
+            </Badge>
+          )}
           {isNew && <Badge variant="secondary" className="text-[10px]">Nuevo</Badge>}
           {unread && <Badge variant="default" className="text-[10px]">Msg</Badge>}
         </div>
@@ -132,6 +155,22 @@ function LeadCard({ lead, unread, isDragging }: LeadCardProps) {
         <p className="text-xs text-muted-foreground mb-2">
           ${(lead.budgetMin || 0).toLocaleString()} - ${lead.budgetMax.toLocaleString()}
         </p>
+      )}
+
+      {lead.stage === 'new' && onAccept && (
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs text-muted-foreground">
+            Aceptar lead: {acceptCost ?? 0} créditos
+          </div>
+          <Button
+            size="sm"
+            onClick={() => onAccept(lead)}
+            disabled={accepting}
+            className="h-7 text-xs"
+          >
+            {accepting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Aceptar lead'}
+          </Button>
+        </div>
       )}
 
       <div className="flex items-center justify-between">
@@ -161,9 +200,11 @@ interface StageColumnProps {
   stage: LeadStage;
   leads: Lead[];
   unreadIds: Set<string>;
+  memberLookup: Record<string, string>;
+  flash: Set<string>;
 }
 
-function StageColumn({ stage, leads, unreadIds }: StageColumnProps) {
+function StageColumn({ stage, leads, unreadIds, memberLookup, flash }: StageColumnProps) {
   const config = stageConfig[stage];
   const { setNodeRef, isOver } = useDroppable({ id: stage });
 
@@ -196,7 +237,16 @@ function StageColumn({ stage, leads, unreadIds }: StageColumnProps) {
         <SortableContext items={leads.map((l) => l.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2" role="list">
             {leads.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} unread={unreadIds.has(lead.id)} />
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                unread={unreadIds.has(lead.id)}
+                assigneeName={memberLookup[lead.assignedTo || '']}
+                flash={flash.has(lead.id)}
+                onAccept={handleAcceptLead}
+                accepting={acceptingId === lead.id}
+                acceptCost={getCostForAction(lead.source === 'marketplace' ? 'lead_premium' : 'lead_basic')}
+              />
             ))}
           </div>
         </SortableContext>
@@ -220,16 +270,59 @@ export default function AgentLeads() {
   const [onlyNew, setOnlyNew] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [insufficientOpen, setInsufficientOpen] = useState(false);
+  const [insufficientVariant, setInsufficientVariant] = useState<'balance' | 'daily_limit' | 'rule_disabled'>('balance');
+  const [insufficientMeta, setInsufficientMeta] = useState<{ dailyLimit?: number; spentToday?: number } | undefined>();
+  const [viewAllTeam, setViewAllTeam] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('agenthub_view_all_leads') === 'true';
+  });
+  const [teamMembers, setTeamMembers] = useState(listMembers());
+  const [assignmentFlash, setAssignmentFlash] = useState<Set<string>>(new Set());
+  const assignmentRef = useRef<Record<string, string>>({});
+  const currentUser = getCurrentUser();
+  const canViewTeam = currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'broker';
+  const { mutateAsync: consumeCredits } = useConsumeCredits();
+  const { data: creditAccount } = useCreditAccount();
   const staleCount = useMemo(
     () => leads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
     [leads]
   );
+  const memberLookup = useMemo(() => {
+    const map: Record<string, string> = {};
+    teamMembers.forEach((m) => { map[m.id] = m.firstName; });
+    return map;
+  }, [teamMembers]);
 
   useEffect(() => {
     fetch('/api/leads')
       .then((res) => res.json())
       .then((data) => setLeads(data));
   }, []);
+
+  useEffect(() => {
+    const unsub = subscribeTeam(() => setTeamMembers(listMembers()));
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const prev = assignmentRef.current;
+    const nextMap: Record<string, string> = {};
+    const changed = new Set<string>();
+    leads.forEach((l) => {
+      nextMap[l.id] = l.assignedTo || '';
+      if (prev[l.id] && prev[l.id] !== l.assignedTo) {
+        changed.add(l.id);
+      }
+    });
+    assignmentRef.current = nextMap;
+    if (changed.size) {
+      setAssignmentFlash(new Set(changed));
+      const id = setTimeout(() => setAssignmentFlash(new Set()), 900);
+      return () => clearTimeout(id);
+    }
+  }, [leads]);
 
   useEffect(() => {
     const stale = leads.filter(
@@ -267,6 +360,13 @@ export default function AgentLeads() {
     }
   }, [leads]);
 
+  useEffect(() => {
+    if (!canViewTeam && viewAllTeam) {
+      setViewAllTeam(false);
+      if (typeof window !== 'undefined') window.localStorage.removeItem('agenthub_view_all_leads');
+    }
+  }, [canViewTeam, viewAllTeam]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -283,7 +383,10 @@ export default function AgentLeads() {
 
   const filteredLeads = useMemo(() => {
     const text = searchQuery.toLowerCase();
-    return leads
+    const scoped = (viewAllTeam && canViewTeam)
+      ? leads
+      : leads.filter((l) => l.assignedTo === currentUser.id);
+    return scoped
       .filter((lead) =>
         [lead.firstName, lead.lastName, lead.email, lead.phone]
           .filter(Boolean)
@@ -292,7 +395,7 @@ export default function AgentLeads() {
       .filter((lead) => stageFilter === 'all' || stageFilter.includes(lead.stage))
       .filter((lead) => !onlyNew || differenceInHours(new Date(), lead.createdAt) <= 48 || lead.stage === 'new')
       .filter((lead) => !onlyUnread || unreadLeadIds.has(lead.id));
-  }, [leads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds]);
+  }, [leads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds, viewAllTeam, currentUser.role, currentUser.id]);
 
   const leadsByStage = useMemo(() => {
     return pipelineStages.reduce((acc, stage) => {
@@ -302,6 +405,66 @@ export default function AgentLeads() {
   }, [filteredLeads]);
 
   const activeLead = activeId ? leads.find((l) => l.id === activeId) : null;
+
+  const getCostForAction = (action: 'lead_basic' | 'lead_premium') => {
+    const rule = creditAccount?.rules.find((r) => r.action === action);
+    if (!rule) return LEAD_ACCEPT_COST;
+    return rule.cost;
+  };
+
+  const handleAcceptLead = async (lead: Lead) => {
+    setAcceptingId(lead.id);
+    const action: 'lead_basic' | 'lead_premium' = lead.source === 'marketplace' ? 'lead_premium' : 'lead_basic';
+    const cost = getCostForAction(action);
+    try {
+      const ruleEnabled = creditAccount?.rules.find((r) => r.action === action)?.isEnabled ?? true;
+      if (!ruleEnabled) {
+        setInsufficientVariant('rule_disabled');
+        setInsufficientOpen(true);
+        track('credits_rule_disabled_block', { source: 'lead', action });
+        return;
+      }
+      track('credits_consume_start', { source: 'lead', leadId: lead.id, amount: cost });
+      await consumeCredits({
+        accountId: 'credit-1',
+        amount: cost,
+        action,
+        referenceType: 'lead',
+        referenceId: lead.id,
+      });
+      setLeads((prev) =>
+        prev.map((l) => (l.id === lead.id ? { ...l, stage: 'contacted' } : l))
+      );
+      toast({
+        title: 'Lead aceptado',
+        description: `Se descontaron ${cost} créditos.`,
+      });
+      track('credits_consume_complete', { source: 'lead', leadId: lead.id, amount: cost });
+      track('lead_accept_confirm', { leadId: lead.id, amount: cost });
+    } catch (e) {
+      const err = e as Error & { meta?: { dailyLimit?: number; spentToday?: number } };
+      const message = err.message || String(err);
+      if (message === 'Error: INSUFFICIENT_BALANCE' || message === 'INSUFFICIENT_BALANCE') {
+        setInsufficientVariant('balance');
+        setInsufficientOpen(true);
+        track('credits_insufficient_modal_shown', { source: 'lead', leadId: lead.id });
+      } else if (message === 'Error: DAILY_LIMIT' || message === 'DAILY_LIMIT') {
+        setInsufficientVariant('daily_limit');
+        setInsufficientMeta(err.meta);
+        setInsufficientOpen(true);
+        track('credits_daily_limit_blocked', { source: 'lead', leadId: lead.id });
+      } else if (message === 'Error: RULE_DISABLED' || message === 'RULE_DISABLED') {
+        setInsufficientVariant('rule_disabled');
+        setInsufficientOpen(true);
+        track('credits_rule_disabled_block', { source: 'lead', leadId: lead.id });
+      } else {
+        toast({ title: 'No se pudo aceptar el lead', variant: 'destructive' });
+        track('credits_consume_error', { source: 'lead', leadId: lead.id, message });
+      }
+    } finally {
+      setAcceptingId(null);
+    }
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -477,7 +640,20 @@ export default function AgentLeads() {
             </Badge>
           </div>
         </div>
-        <div className="flex gap-2 self-start">
+        <div className="flex gap-2 self-start items-center">
+          {canViewTeam && (
+            <Button
+              variant={viewAllTeam ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                const next = !viewAllTeam;
+                setViewAllTeam(next);
+                if (typeof window !== 'undefined') window.localStorage.setItem('agenthub_view_all_leads', String(next));
+              }}
+            >
+              Ver {viewAllTeam ? 'mis leads' : 'leads del equipo'}
+            </Button>
+          )}
           <Button variant="outline" size="icon" aria-label="Abrir filtros avanzados">
             <Filter className="h-4 w-4" />
           </Button>
@@ -493,6 +669,22 @@ export default function AgentLeads() {
           </Tabs>
         </div>
       </motion.div>
+      {!canViewTeam && (
+        <div className="mb-2">
+          <div className="flex items-center gap-2 rounded-md border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            Solo brokers/admin pueden ver todo el equipo. Pide acceso al owner.
+          </div>
+        </div>
+      )}
+      {canViewTeam && viewAllTeam && (
+        <div className="mb-2">
+          <div className="flex items-center gap-2 rounded-md border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            Estás viendo todos los leads del equipo. Usa filtros para acotar.
+          </div>
+        </div>
+      )}
 
       {/* Pipeline View */}
       {viewMode === 'pipeline' && (
@@ -511,6 +703,8 @@ export default function AgentLeads() {
                   stage={stage}
                   leads={leadsByStage[stage] || []}
                   unreadIds={unreadLeadIds}
+                  memberLookup={memberLookup}
+                  flash={assignmentFlash}
                 />
               ))}
             </div>
@@ -566,6 +760,14 @@ export default function AgentLeads() {
                         {lead.email || lead.phone || 'Sin contacto'}
                       </p>
                     </div>
+                    {memberLookup[lead.assignedTo || ''] && (
+                      <Badge
+                        variant="outline"
+                        className={cn('text-[11px] hidden sm:inline-flex', assignmentFlash.has(lead.id) && 'bg-primary/20 border-primary/30 animate-pulse')}
+                      >
+                        {memberLookup[lead.assignedTo || '']}
+                      </Badge>
+                    )}
                     <Badge variant="outline" className="hidden sm:inline-flex">
                       {stageConfig[lead.stage]?.label || lead.stage}
                     </Badge>
@@ -583,6 +785,16 @@ export default function AgentLeads() {
           </Card>
         </motion.div>
       )}
+      <InsufficientCreditsDialog
+        open={insufficientOpen}
+        onClose={() => setInsufficientOpen(false)}
+        onRecharge={() => {
+          setInsufficientOpen(false);
+          window.location.assign('/agents/credits');
+        }}
+        variant={insufficientVariant}
+        meta={insufficientMeta}
+      />
     </motion.div>
   );
 }

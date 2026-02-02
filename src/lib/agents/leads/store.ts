@@ -58,6 +58,12 @@ export function listLeads(): Lead[] {
   return leads.slice().sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
+export function replaceLeads(next: Lead[]) {
+  leads = next;
+  save(leads);
+  emit();
+}
+
 export function getLeadById(id: string) {
   return leads.find((l) => l.id === id);
 }
@@ -124,6 +130,14 @@ export function updateLeadNotes(id: string, notes: string) {
 
 export function updateLeadTags(id: string, tags: string[]) {
   leads = leads.map((lead) => (lead.id === id ? { ...lead, tags, updatedAt: new Date() } : lead));
+  save(leads);
+  emit();
+}
+
+export function reassignLead(id: string, toAgentId: string) {
+  leads = leads.map((lead) =>
+    lead.id === id ? { ...lead, assignedTo: toAgentId, updatedAt: new Date() } : lead
+  );
   save(leads);
   emit();
 }

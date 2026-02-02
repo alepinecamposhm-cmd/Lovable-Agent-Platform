@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -31,52 +32,67 @@ import AgentIntegrations from "./pages/agents/integrations";
 import AgentNotificationSettings from "./pages/agents/settings/notifications";
 import AgentOpenHouseVisitors from "./pages/agents/open-house/visitors";
 import AgentAudit from "./pages/agents/audit";
+import InviteAcceptPage from "./pages/invite";
+import { toast } from "@/components/ui/use-toast";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
+const App = () => {
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.__MSW_ERROR__) {
+      toast({
+        title: 'Mocks no disponibles',
+        description: window.__MSW_ERROR__,
+        variant: 'destructive',
+      });
+    }
+  }, []);
 
-          {/* Agent Platform Routes */}
-          <Route path="/agents" element={<AgentErrorBoundary><AgentLayout /></AgentErrorBoundary>}>
-            <Route index element={<Navigate to="overview" replace />} />
-            <Route path="overview" element={<AgentOverview />} />
-            <Route path="leads" element={<AgentLeads />} />
-            <Route path="leads/:leadId" element={<AgentLeadDetail />} />
-            <Route path="inbox" element={<AgentInbox />} />
-            <Route path="calendar" element={<AgentCalendar />} />
-            <Route path="listings" element={<AgentListings />} />
-            <Route path="listings/new" element={<AgentListingWizard />} />
-            <Route path="listings/:listingId/edit" element={<AgentListingWizard />} />
-            <Route path="listings/:listingId" element={<AgentListingDetail />} />
-            <Route path="profile" element={<AgentProfilePage />} />
-            <Route path="profile/:agentId" element={<AgentProfilePage />} />
-            <Route path="credits" element={<AgentCredits />} />
-            <Route path="team" element={<AgentTeam />} />
-            <Route path="reports" element={<AgentReports />} />
-            <Route path="reports/experience" element={<AgentExperienceReport />} />
-            <Route path="reports/roi" element={<AgentRoiReport />} />
-            <Route path="roadmap" element={<AgentRoadmap />} />
-            <Route path="notifications" element={<AgentNotifications />} />
-            <Route path="tasks" element={<AgentTasks />} />
-            <Route path="integrations" element={<AgentIntegrations />} />
-            <Route path="settings/notifications" element={<AgentNotificationSettings />} />
-            <Route path="open-house/visitors" element={<AgentOpenHouseVisitors />} />
-            <Route path="settings" element={<AgentSettings />} />
-            <Route path="audit" element={<AgentAudit />} />
-          </Route>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/invite/:token" element={<InviteAcceptPage />} />
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+            {/* Agent Platform Routes */}
+            <Route path="/agents" element={<AgentErrorBoundary><AgentLayout /></AgentErrorBoundary>}>
+              <Route index element={<Navigate to="overview" replace />} />
+              <Route path="overview" element={<AgentOverview />} />
+              <Route path="leads" element={<AgentLeads />} />
+              <Route path="leads/:leadId" element={<AgentLeadDetail />} />
+              <Route path="inbox" element={<AgentInbox />} />
+              <Route path="calendar" element={<AgentCalendar />} />
+              <Route path="listings" element={<AgentListings />} />
+              <Route path="listings/new" element={<AgentListingWizard />} />
+              <Route path="listings/:listingId/edit" element={<AgentListingWizard />} />
+              <Route path="listings/:listingId" element={<AgentListingDetail />} />
+              <Route path="profile" element={<AgentProfilePage />} />
+              <Route path="profile/:agentId" element={<AgentProfilePage />} />
+              <Route path="credits" element={<AgentCredits />} />
+              <Route path="team" element={<AgentTeam />} />
+              <Route path="reports" element={<AgentReports />} />
+              <Route path="reports/experience" element={<AgentExperienceReport />} />
+              <Route path="reports/roi" element={<AgentRoiReport />} />
+              <Route path="roadmap" element={<AgentRoadmap />} />
+              <Route path="notifications" element={<AgentNotifications />} />
+              <Route path="tasks" element={<AgentTasks />} />
+              <Route path="integrations" element={<AgentIntegrations />} />
+              <Route path="settings/notifications" element={<AgentNotificationSettings />} />
+              <Route path="open-house/visitors" element={<AgentOpenHouseVisitors />} />
+              <Route path="settings" element={<AgentSettings />} />
+              <Route path="audit" element={<AgentAudit />} />
+            </Route>
+
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

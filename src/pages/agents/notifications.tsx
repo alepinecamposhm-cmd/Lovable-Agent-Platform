@@ -8,6 +8,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useConsumeCredits, useCreditAccount } from '@/lib/credits/query';
+import { InsufficientCreditsDialog } from '@/components/agents/credits/InsufficientCreditsDialog';
 
 interface Notification {
   id: string;
@@ -27,6 +29,9 @@ const MOCK_NOTIFICATIONS: Notification[] = [
 
 export default function AgentNotifications() {
   const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+  const { mutateAsync: consumeCredits } = useConsumeCredits();
+  const { data: creditAccount } = useCreditAccount();
+  const [blockModal, setBlockModal] = useState<{ open: boolean; variant: 'balance' | 'daily_limit' | 'rule_disabled' }>({ open: false, variant: 'balance' });
 
   const markAllRead = () => {
     setNotifications(notifications.map(n => ({ ...n, read: true })));
@@ -99,6 +104,44 @@ export default function AgentNotifications() {
                     {n.description}
                   </p>
                 </div>
+                {n.type === 'lead' && (
+                  <div className="flex flex-col gap-2 min-w-[140px]">
+                    <Badge variant="outline" className="self-start">
+                      {creditAccount?.rules.find((r) => r.action === 'lead_premium')?.cost ?? 5} créditos
+                    </Badge>
+                    <Button
+                      size="sm"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const cost = creditAccount?.rules.find((r) => r.action === 'lead_premium')?.cost ?? 5;
+                        const ruleEnabled = creditAccount?.rules.find((r) => r.action === 'lead_premium')?.isEnabled ?? true;
+                        if (!ruleEnabled) {
+                          setBlockModal({ open: true, variant: 'rule_disabled' });
+                          return;
+                        }
+                        try {
+                          await consumeCredits({
+                            accountId: 'credit-1',
+                            amount: cost,
+                            action: 'lead_premium',
+                            referenceType: 'lead',
+                            referenceId: n.id,
+                          });
+                          toast.success('Lead aceptado');
+                          setNotifications((prev) => prev.map((item) => item.id === n.id ? { ...item, read: true } : item));
+                        } catch (err) {
+                          const msg = String(err);
+                          if (msg === 'Error: INSUFFICIENT_BALANCE') setBlockModal({ open: true, variant: 'balance' });
+                          else if (msg === 'Error: DAILY_LIMIT') setBlockModal({ open: true, variant: 'daily_limit' });
+                          else if (msg === 'Error: RULE_DISABLED') setBlockModal({ open: true, variant: 'rule_disabled' });
+                          else toast.error('No se pudo aceptar el lead');
+                        }
+                      }}
+                    >
+                      Aceptar
+                    </Button>
+                  </div>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -112,6 +155,13 @@ export default function AgentNotifications() {
           ))
         )}
       </motion.div>
+
+      <InsufficientCreditsDialog
+        open={blockModal.open}
+        variant={blockModal.variant}
+        onClose={() => setBlockModal({ ...blockModal, open: false })}
+        onRecharge={() => window.location.assign('/agents/credits')}
+      />
     </motion.div>
   );
 }

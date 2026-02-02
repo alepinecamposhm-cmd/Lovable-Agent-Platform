@@ -1,4 +1,4 @@
-import { Bell, Search, Command } from 'lucide-react';
+import { Bell, Search, Command, CreditCard } from 'lucide-react';
 import { AlarmClock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +22,8 @@ import {
 } from '@/lib/agents/notifications/store';
 import { useTaskStore } from '@/lib/agents/tasks/store';
 import { useNavigate } from 'react-router-dom';
+import { useCreditAccount } from '@/lib/credits/query';
+import { cn as cnUtil } from '@/lib/utils';
 
 interface AgentTopbarProps {
   onOpenCommand: () => void;
@@ -32,10 +34,19 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
   const navigate = useNavigate();
   const { notifications, unread, quietHours } = useNotificationStore();
   const { pending: pendingTasks } = useTaskStore();
+  const { data: creditAccount, isLoading: creditLoading, isError: creditError } = useCreditAccount();
+  const lowBalance = creditAccount ? creditAccount.balance <= creditAccount.lowBalanceThreshold : false;
   const quietLabel = useMemo(() => {
     if (!quietHours.enabled) return 'Notificaciones activas';
     return `Silenciado ${quietHours.start}–${quietHours.end}`;
   }, [quietHours]);
+
+  const track = (event: string, properties?: Record<string, unknown>) => {
+    fetch('/api/analytics', {
+      method: 'POST',
+      body: JSON.stringify({ event, properties }),
+    }).catch(() => {});
+  };
 
   useHotkeys(['mod+k', 'k'], (e) => {
     e.preventDefault();
@@ -64,6 +75,41 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
 
         {/* Right side actions */}
         <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cnUtil(
+                  'h-9 gap-2',
+                  lowBalance && 'border-warning text-warning',
+                  creditError && 'border-destructive text-destructive'
+                )}
+                onClick={() => navigate('/agents/credits')}
+              >
+                <CreditCard className="h-4 w-4" />
+                {creditLoading ? '—' : creditError ? 'Error' : `${creditAccount?.balance ?? '—'}`}
+                <span className="text-xs text-muted-foreground">cr</span>
+                <span className="text-xs text-muted-foreground">
+                  · ${creditAccount?.currencyRate ? (creditAccount.balance * (creditAccount.currencyRate || 1)).toFixed(0) : '--'}
+                </span>
+                {lowBalance && (
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-warning opacity-75 animate-ping" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-warning" />
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {creditError
+                ? 'No se pudo cargar el saldo'
+                : lowBalance
+                ? 'Saldo bajo - recarga créditos'
+                : 'Saldo disponible'}
+            </TooltipContent>
+          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -166,6 +212,9 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium">{notification.title}</p>
                       <p className="text-sm text-muted-foreground truncate">{notification.body}</p>
+                      {notification.costCredits ? (
+                        <p className="text-xs text-warning mt-1">Costo: {notification.costCredits} créditos</p>
+                      ) : null}
                       <p className="text-xs text-muted-foreground mt-1">
                         {formatDistanceToNow(notification.createdAt, { addSuffix: true, locale: es })}
                       </p>

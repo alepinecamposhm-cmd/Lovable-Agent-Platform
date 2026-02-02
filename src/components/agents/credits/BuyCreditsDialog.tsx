@@ -1,17 +1,27 @@
-import { useState } from 'react';
-import { Check, CreditCard, Loader2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Check, CreditCard, Loader2, Mail, Receipt, Share } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { usePurchaseCredits, useSendReceiptEmail } from '@/lib/credits/query';
+import { format } from 'date-fns';
 
 interface CreditPackage {
   id: string;
   credits: number;
   price: number;
   popular?: boolean;
+}
+
+interface ReceiptInfo {
+  id: string;
+  amount: number;
+  credits: number;
+  createdAt?: string | Date;
+  paymentMethod?: string;
 }
 
 const packages: CreditPackage[] = [
@@ -21,29 +31,47 @@ const packages: CreditPackage[] = [
 ];
 
 interface BuyCreditsDialogProps {
-  onPurchase: (amount: number) => void;
+  accountId?: string;
   trigger?: React.ReactNode;
 }
 
-export function BuyCreditsDialog({ onPurchase, trigger }: BuyCreditsDialogProps) {
+const track = (event: string, properties?: Record<string, unknown>) => {
+  fetch('/api/analytics', {
+    method: 'POST',
+    body: JSON.stringify({ event, properties }),
+  }).catch(() => {});
+};
+
+export function BuyCreditsDialog({ accountId = 'credit-1', trigger }: BuyCreditsDialogProps) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string>('pro');
-  const [loading, setLoading] = useState(false);
+  const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
+
+  const { mutateAsync, isPending } = usePurchaseCredits();
+  const { mutateAsync: sendReceiptEmail, isPending: emailSending } = useSendReceiptEmail();
+
+  const pkgSelected = useMemo(() => packages.find(p => p.id === selected), [selected]);
 
   const handlePurchase = async () => {
-    setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
-      const pkg = packages.find(p => p.id === selected);
-      if (pkg) {
-        onPurchase(pkg.credits);
-        toast.success(`Has comprado ${pkg.credits} créditos`, {
-          description: "Tu saldo ha sido actualizado."
-        });
-        setOpen(false);
-      }
-    }, 1500);
+    if (!pkgSelected) return;
+    track('credits_purchase_start', { packageId: pkgSelected.id, credits: pkgSelected.credits, price: pkgSelected.price });
+    try {
+      const result = await mutateAsync({
+        accountId,
+        packageId: pkgSelected.id,
+        credits: pkgSelected.credits,
+        price: pkgSelected.price,
+      });
+      setReceipt(result.receipt);
+      toast.success(`Has comprado ${pkgSelected.credits} créditos`, {
+        description: 'Tu saldo ha sido actualizado.',
+      });
+      track('credits_purchase_complete', { packageId: pkgSelected.id, credits: pkgSelected.credits, price: pkgSelected.price });
+      track('credits_purchase_receipt_view', { receiptId: result.receipt.id, amount: result.receipt.amount });
+    } catch (e) {
+      toast.error('No se pudo procesar el pago, intenta otra tarjeta.');
+      track('credits_purchase_error', { packageId: pkgSelected?.id, message: String(e) });
+    }
   };
 
   return (
@@ -99,12 +127,64 @@ export function BuyCreditsDialog({ onPurchase, trigger }: BuyCreditsDialogProps)
             </div>
             <Button variant="ghost" size="sm" className="text-xs h-7">Cambiar</Button>
           </div>
+
+          {receipt && (
+            <Card className="p-3 flex items-start gap-3">
+              <Receipt className="h-4 w-4 text-primary mt-1" />
+              <div className="text-sm space-y-1">
+                <p className="font-medium">Recibo #{receipt.id}</p>
+                <p className="text-muted-foreground">Pago ${receipt.amount} · {receipt.credits} créditos · {receipt.paymentMethod || 'Visa 4242'}</p>
+                <p className="text-muted-foreground text-xs">
+                  {receipt.createdAt ? format(new Date(receipt.createdAt), 'd MMM y, HH:mm') : ''}
+                </p>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => {
+                      const blob = new Blob(
+                        [`Recibo ${receipt.id}\nCréditos: ${receipt.credits}\nMonto: $${receipt.amount}\nMétodo: ${receipt.paymentMethod}\nFecha: ${new Date(receipt.createdAt || new Date()).toLocaleString()}`],
+                        { type: 'text/plain' }
+                      );
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `recibo-${receipt.id}.txt`;
+                      a.click();
+                    }}
+                  >
+                    <Share className="h-3.5 w-3.5 mr-1" />
+                    Descargar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={emailSending}
+                    className="text-xs"
+                    onClick={async () => {
+                      try {
+                        await sendReceiptEmail({ receiptId: receipt.id, email: 'agent@example.com' });
+                        toast.success('Recibo enviado por email');
+                        track('credits_receipt_email_sent', { receiptId: receipt.id });
+                      } catch (err) {
+                        toast.error('No se pudo enviar el recibo');
+                      }
+                    }}
+                  >
+                    {emailSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5 mr-1" />}
+                    Enviar email
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button onClick={handlePurchase} disabled={loading} className="min-w-[120px]">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirmar pago'}
+          <Button onClick={handlePurchase} disabled={isPending} className="min-w-[140px]">
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : `Confirmar pago${pkgSelected ? ` ($${pkgSelected.price})` : ''}`}
           </Button>
         </DialogFooter>
       </DialogContent>

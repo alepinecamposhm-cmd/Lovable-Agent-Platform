@@ -77,11 +77,15 @@ export interface Lead {
   sourceDetails?: string;
   interestedIn: 'buy' | 'sell' | 'rent';
   propertyType?: string;
+  zip?: string;
+  priceBucket?: string;
   budgetMin?: number;
   budgetMax?: number;
   preferredZones?: string[];
   notes?: string;
   tags?: string[];
+  assignedAt?: Date;
+  acceptedAt?: Date;
   lastContactedAt?: Date;
   lastActivityAt?: Date;
   nextFollowUpAt?: Date;
@@ -135,6 +139,22 @@ export type LeadActivityType =
   | 'appointment_completed'
   | 'assignment_changed'
   | 'property_viewed';
+
+// ============ CONTACTS ============
+
+export interface Contact {
+  id: string;
+  firstName: string;
+  lastName?: string;
+  emails?: string[];
+  phones?: string[];
+  linkedLeadIds?: string[];
+  tags?: string[];
+  notes?: string;
+  mergedWith?: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 // ============ CONVERSATIONS ============
 
@@ -225,6 +245,7 @@ export interface Listing {
   listedAt?: Date;
   expiresAt?: Date;
   soldAt?: Date;
+  featuredUntil?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -279,6 +300,7 @@ export interface CreditAccount {
   currency: 'credits';
   lowBalanceThreshold: number;
   dailyLimit?: number;
+  currencyRate?: number; // equivalencia 1 crédito = currencyRate USD/MXN
   rules: CreditRule[];
   createdAt: Date;
   updatedAt: Date;
@@ -309,6 +331,15 @@ export interface CreditLedgerEntry {
   referenceType?: 'lead' | 'listing' | 'recharge' | 'refund';
   referenceId?: string;
   createdAt: Date;
+}
+
+export interface CreditInvoice {
+  id: string;
+  amount: number;
+  credits: number;
+  paymentMethod: string;
+  createdAt: Date;
+  description?: string;
 }
 
 // ============ NOTIFICATIONS ============
@@ -369,6 +400,14 @@ export interface AgentMetrics {
   conversionToAppointment: number;
   closedWonRate: number;
   healthScore: number;
+}
+
+export interface AgentPerformanceRow {
+  agentId: string;
+  leadsReceived: number;
+  responseUnder5m: number; // %
+  appointmentsSet: number;
+  avgRating?: number;
 }
 
 // ============ FEEDBACK / CX ============

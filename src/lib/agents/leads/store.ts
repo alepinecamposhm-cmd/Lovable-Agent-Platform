@@ -5,6 +5,7 @@ import type { Lead, LeadStage } from '@/types/agents';
 
 const STORAGE_KEY = 'agenthub_leads';
 const listeners = new Set<() => void>();
+let loadError: string | null = null;
 
 function load(): Lead[] {
   if (typeof window === 'undefined') return mockLeads;
@@ -23,7 +24,8 @@ function load(): Lead[] {
     }));
     return parsed;
   } catch (e) {
-    console.error('Failed to parse leads from storage', e);
+    loadError = 'Failed to parse leads from storage';
+    console.error(loadError, e);
     return mockLeads;
   }
 }
@@ -145,7 +147,7 @@ export function reassignLead(id: string, toAgentId: string) {
 export function useLeadStore() {
   return useSyncExternalStore(
     subscribe,
-    () => ({ leads: listLeads() }),
-    () => ({ leads: listLeads() })
+    () => ({ leads: listLeads(), error: loadError }),
+    () => ({ leads: listLeads(), error: loadError })
   );
 }

@@ -63,6 +63,8 @@ const App = () => {
               <Route index element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<AgentOverview />} />
               <Route path="leads" element={<AgentLeads />} />
+              {/* PDF route alias: /agents/lead/:id */}
+              <Route path="lead/:leadId" element={<AgentLeadDetail />} />
               <Route path="leads/:leadId" element={<AgentLeadDetail />} />
               <Route path="inbox" element={<AgentInbox />} />
               <Route path="calendar" element={<AgentCalendar />} />

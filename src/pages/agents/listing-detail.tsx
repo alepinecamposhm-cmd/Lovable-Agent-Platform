@@ -76,17 +76,14 @@ export default function AgentListingDetail() {
   const [openHouseTime, setOpenHouseTime] = useState('12:00');
   const [scheduling, setScheduling] = useState(false);
 
-  const engagement = useMemo(
-    () =>
-      listing
-        ? [
-            { label: 'Vistas', icon: Eye, value: listing.viewCount },
-            { label: 'Guardados', icon: Heart, value: listing.saveCount },
-            { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
-          ]
-        : [],
-    [listing?.id, listing?.viewCount, listing?.saveCount, listing?.inquiryCount]
-  );
+  const engagement = useMemo(() => {
+    if (!listing) return [];
+    return [
+      { label: 'Vistas', icon: Eye, value: listing.viewCount },
+      { label: 'Guardados', icon: Heart, value: listing.saveCount },
+      { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
+    ];
+  }, [listing]);
 
   const listingKey = listing?.id;
   useEffect(() => {

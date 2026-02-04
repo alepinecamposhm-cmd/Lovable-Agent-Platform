@@ -395,7 +395,7 @@ export default function AgentLeads() {
       .filter((lead) => stageFilter === 'all' || stageFilter.includes(lead.stage))
       .filter((lead) => !onlyNew || differenceInHours(new Date(), lead.createdAt) <= 48 || lead.stage === 'new')
       .filter((lead) => !onlyUnread || unreadLeadIds.has(lead.id));
-  }, [leads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds, viewAllTeam, currentUser.role, currentUser.id]);
+  }, [leads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds, viewAllTeam, canViewTeam, currentUser.id]);
 
   const leadsByStage = useMemo(() => {
     return pipelineStages.reduce((acc, stage) => {

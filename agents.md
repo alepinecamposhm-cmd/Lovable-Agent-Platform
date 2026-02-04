@@ -93,9 +93,10 @@
 
 ### 3) Lint “en verde” (requisito de calidad del sprint)
 - **Files changed (no funcional / tipado/hooks):**
+  - `eslint.config.js` (ignorar `public/mockServiceWorker.js` + desactivar react-refresh rule en `src/components/ui/*`)
   - `tailwind.config.ts` (require → import ESM)
   - Stores: `src/lib/agents/appointments/store.ts`, `src/lib/agents/cx/store.ts`, `src/lib/agents/integrations/store.ts`, `src/lib/agents/leads/store.ts`, `src/lib/agents/listings/store.ts`, `src/lib/agents/notifications/store.ts`, `src/lib/agents/tasks/store.ts`, `src/lib/agents/team/store.ts`
-  - Pages: `src/pages/agents/lead-detail.tsx`, `src/pages/agents/listing-detail.tsx`, `src/pages/agents/listing-new.tsx`, `src/pages/agents/team.tsx`
+  - Pages: `src/pages/agents/lead-detail.tsx`, `src/pages/agents/leads.tsx`, `src/pages/agents/listing-detail.tsx`, `src/pages/agents/listing-new.tsx`, `src/pages/agents/team.tsx`, `src/pages/agents/marketing.tsx`, `src/pages/agents/transactions.tsx`
   - UI: `src/components/ui/command.tsx`, `src/components/ui/textarea.tsx`
   - Tests/Types: `src/lib/audit/store.ts`, `src/lib/contacts/merge.test.ts`
 - **Motivo:** El sprint requiere finalizar con `npm run lint` pasando; se eliminó `any` explícito, hooks condicionales y `require()` prohibidos.
@@ -118,6 +119,6 @@
 - **Rollback:** Revertir handlers, eliminar endpoint PDF, y remover `pdf-lib` de dependencias (y volver a descarga `.txt` si fuera necesario).
 
 ### QA (04/02/2026)
-- `npm run lint`: ✅ (0 errors; warnings react-refresh/exhaustive-deps permanecen)
+- `npm run lint`: ✅ (0 errors, 0 warnings)
 - `npm run test`: ✅
 - `npm run build`: ✅

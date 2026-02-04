@@ -55,7 +55,15 @@ function loadLedgerSeed(): CreditLedgerEntry[] {
     return seed;
   }
   try {
-    return (JSON.parse(raw) as any[]).map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) throw new Error('Invalid ledger seed');
+    return parsed.map((eRaw) => {
+      const entry = eRaw as Record<string, unknown>;
+      return {
+        ...(eRaw as Omit<CreditLedgerEntry, 'createdAt'>),
+        createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : new Date(),
+      } as CreditLedgerEntry;
+    });
   } catch {
     const seed = cloneLedgerSeed();
     window.localStorage.setItem(LEDGER_SEED_KEY, JSON.stringify(seed));
@@ -77,7 +85,15 @@ function loadInvoiceSeed(): CreditInvoice[] {
     return seed;
   }
   try {
-    return (JSON.parse(raw) as any[]).map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) throw new Error('Invalid invoice seed');
+    return parsed.map((iRaw) => {
+      const invoice = iRaw as Record<string, unknown>;
+      return {
+        ...(iRaw as Omit<CreditInvoice, 'createdAt'>),
+        createdAt: typeof invoice.createdAt === 'string' ? new Date(invoice.createdAt) : new Date(),
+      } as CreditInvoice;
+    });
   } catch {
     const seed = mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
     window.localStorage.setItem(INVOICE_SEED_KEY, JSON.stringify(seed));
@@ -268,7 +284,14 @@ async function fetchInvoices(params: { page: number; pageSize?: number }): Promi
     const res = await fetch(`/api/credits/invoices?${search.toString()}`);
     const json = await res.json();
     if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudieron cargar las facturas');
-    const invoices = (json.invoices || []).map((i: any) => ({ ...i, createdAt: new Date(i.createdAt) })) as CreditInvoice[];
+    const invoices = (Array.isArray((json as { invoices?: unknown }).invoices) ? (json as { invoices: unknown[] }).invoices : [])
+      .map((iRaw) => {
+        const invoice = iRaw as Record<string, unknown>;
+        return {
+          ...(iRaw as Omit<CreditInvoice, 'createdAt'>),
+          createdAt: typeof invoice.createdAt === 'string' ? new Date(invoice.createdAt) : new Date(),
+        } as CreditInvoice;
+      });
     if (!invoices.length) return fallback();
     saveInvoiceSeed(invoices);
     return {

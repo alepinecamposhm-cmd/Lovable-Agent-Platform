@@ -12,17 +12,30 @@ function load(): Lead[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockLeads;
   try {
-    const parsed: Lead[] = JSON.parse(raw).map((lead: any) => ({
-      ...lead,
-      createdAt: lead.createdAt ? parseISO(lead.createdAt) : new Date(),
-      updatedAt: lead.updatedAt ? parseISO(lead.updatedAt) : new Date(),
-      lastContactedAt: lead.lastContactedAt ? parseISO(lead.lastContactedAt) : undefined,
-      lastActivityAt: lead.lastActivityAt ? parseISO(lead.lastActivityAt) : undefined,
-      nextFollowUpAt: lead.nextFollowUpAt ? parseISO(lead.nextFollowUpAt) : undefined,
-      closedAt: lead.closedAt ? parseISO(lead.closedAt) : undefined,
-      tags: lead.tags || [],
-    }));
-    return parsed;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return mockLeads;
+    return parsed.map((leadRaw) => {
+      const lead = leadRaw as Record<string, unknown>;
+      return {
+        ...(leadRaw as Omit<
+          Lead,
+          | 'createdAt'
+          | 'updatedAt'
+          | 'lastContactedAt'
+          | 'lastActivityAt'
+          | 'nextFollowUpAt'
+          | 'closedAt'
+          | 'tags'
+        >),
+        createdAt: typeof lead.createdAt === 'string' ? parseISO(lead.createdAt) : new Date(),
+        updatedAt: typeof lead.updatedAt === 'string' ? parseISO(lead.updatedAt) : new Date(),
+        lastContactedAt: typeof lead.lastContactedAt === 'string' ? parseISO(lead.lastContactedAt) : undefined,
+        lastActivityAt: typeof lead.lastActivityAt === 'string' ? parseISO(lead.lastActivityAt) : undefined,
+        nextFollowUpAt: typeof lead.nextFollowUpAt === 'string' ? parseISO(lead.nextFollowUpAt) : undefined,
+        closedAt: typeof lead.closedAt === 'string' ? parseISO(lead.closedAt) : undefined,
+        tags: Array.isArray(lead.tags) ? (lead.tags as string[]) : [],
+      };
+    });
   } catch (e) {
     loadError = 'Failed to parse leads from storage';
     console.error(loadError, e);

@@ -6,14 +6,15 @@ import type { Lead, Task } from '@/types/agents';
 const STORAGE_KEY = 'agenthub_tasks';
 const listeners = new Set<() => void>();
 
-function hydrateTask(raw: any): Task {
+function hydrateTask(raw: unknown): Task {
+  const task = raw as Record<string, unknown>;
   return {
-    ...raw,
-    dueAt: raw.dueAt ? parseISO(raw.dueAt) : undefined,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-    completedAt: raw.completedAt ? parseISO(raw.completedAt) : undefined,
-    snoozedUntil: raw.snoozedUntil ? parseISO(raw.snoozedUntil) : undefined,
-  } as Task;
+    ...(task as unknown as Task),
+    dueAt: typeof task.dueAt === 'string' ? parseISO(task.dueAt) : undefined,
+    createdAt: typeof task.createdAt === 'string' ? parseISO(task.createdAt) : new Date(),
+    completedAt: typeof task.completedAt === 'string' ? parseISO(task.completedAt) : undefined,
+    snoozedUntil: typeof task.snoozedUntil === 'string' ? parseISO(task.snoozedUntil) : undefined,
+  };
 }
 
 function load(): Task[] {
@@ -172,7 +173,9 @@ export function addNoShowFollowUp(appointment: { id: string; leadId?: string; le
   });
 }
 
-let cachedSnapshot: { tasks: Task[]; pending: number; _raw: Task[] } | null = null;
+type TaskSnapshot = { tasks: Task[]; pending: number; _raw: Task[] };
+
+let cachedSnapshot: TaskSnapshot | null = null;
 
 function getSnapshot() {
   if (!cachedSnapshot || cachedSnapshot._raw !== tasks) {
@@ -180,9 +183,9 @@ function getSnapshot() {
       tasks: listTasks(),
       pending: getPendingCount(),
       _raw: tasks,
-    } as any;
+    };
   }
-  return cachedSnapshot as { tasks: Task[]; pending: number };
+  return cachedSnapshot;
 }
 
 export function useTaskStore(): { tasks: Task[]; pending: number } {

@@ -40,6 +40,7 @@ import { BuyCreditsDialog } from '@/components/agents/credits/BuyCreditsDialog';
 import { useCreditAccount, useCreditLedger, useUpdateCreditAccount, useSaveCreditRules, useSaveCreditLimits, useCreditMetrics, useCreditInvoices } from '@/lib/credits/query';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import type { CreditLedgerEntry } from '@/types/agents';
 
 const PER_PAGE = 10;
 const INVOICE_PER_PAGE = 10;
@@ -111,7 +112,10 @@ export default function AgentCredits() {
   const [activeTab, setActiveTab] = useState<'overview' | 'invoices'>('overview');
   const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [ledgerDetail, setLedgerDetail] = useState<{ entry: any; reference?: { type: string; label: string; path: string } } | null>(null);
+  type LedgerReference = { type: string; label: string; path: string };
+  type LedgerDetail = { entry: CreditLedgerEntry; reference?: LedgerReference };
+
+  const [ledgerDetail, setLedgerDetail] = useState<LedgerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -229,10 +233,14 @@ export default function AgentCredits() {
       const res = await fetch(`/api/credits/ledger/${id}`);
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar el detalle');
-      setLedgerDetail({ entry: json.entry, reference: json.reference });
+      const entry = {
+        ...(json.entry as Omit<CreditLedgerEntry, 'createdAt'>),
+        createdAt: new Date((json.entry as { createdAt: string }).createdAt),
+      } as CreditLedgerEntry;
+      setLedgerDetail({ entry, reference: json.reference as LedgerReference | undefined });
       track('credits_ledger_item_open', { id });
-    } catch (e: any) {
-      setDetailError(e?.message || 'No se pudo cargar el detalle');
+    } catch (e: unknown) {
+      setDetailError(e instanceof Error ? e.message : 'No se pudo cargar el detalle');
     } finally {
       setDetailLoading(false);
     }

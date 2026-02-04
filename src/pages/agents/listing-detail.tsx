@@ -190,6 +190,33 @@ export default function AgentListingDetail() {
     ];
   }, [listing]);
 
+  const engagement = useMemo(() => {
+    if (!listing) return [];
+    return [
+      { label: 'Vistas', icon: Eye, value: listing.viewCount },
+      { label: 'Guardados', icon: Heart, value: listing.saveCount },
+      { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
+    ];
+  }, [listing]);
+
+  useEffect(() => {
+    try {
+      if (!listing) {
+        setActivityState('empty');
+        return;
+      }
+      const events = listListingActivities(listing.id);
+      if (!events.length) {
+        setActivityState('empty');
+      } else {
+        setActivityFeed(events);
+        setActivityState('success');
+      }
+    } catch {
+      setActivityState('error');
+    }
+  }, [listing]);
+
   if (!listing) {
     return (
       <div className="space-y-4">

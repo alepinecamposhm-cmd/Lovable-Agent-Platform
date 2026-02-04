@@ -22,7 +22,7 @@ export default function AgentMarketing() {
 
     useEffect(() => {
         fetchTemplates();
-    }, []);
+    }, [fetchTemplates]);
 
     const handleGenerate = (templateId: string) => {
         // Mock listing ID, in real app would open a listing selector first

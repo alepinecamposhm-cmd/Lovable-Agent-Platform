@@ -2,10 +2,15 @@ import { http, HttpResponse } from 'msw';
 import { mockLeads, mockContacts, mockCreditAccount, mockLedger, mockInvoices } from '@/lib/agents/fixtures';
 import { mergeContacts } from '@/lib/contacts/merge';
 import { addAuditEvent } from '@/lib/audit/store';
+import type { CreditAccount, CreditInvoice, CreditLedgerEntry, CreditRule } from '@/types/agents';
 
-const cloneAccount = () => ({ ...mockCreditAccount, createdAt: new Date(mockCreditAccount.createdAt), updatedAt: new Date(mockCreditAccount.updatedAt) });
-const cloneLedger = () => mockLedger.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
-const cloneInvoices = () => mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
+const cloneAccount = (): CreditAccount => ({
+  ...mockCreditAccount,
+  createdAt: new Date(mockCreditAccount.createdAt),
+  updatedAt: new Date(mockCreditAccount.updatedAt),
+});
+const cloneLedger = (): CreditLedgerEntry[] => mockLedger.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
+const cloneInvoices = (): CreditInvoice[] => mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
 
 const creditAccountLive = cloneAccount();
 const ledgerLive = cloneLedger();
@@ -86,12 +91,19 @@ export const handlers = [
       const body = await req.request.json();
       const { rules } = body;
       if (!Array.isArray(rules)) return HttpResponse.json({ ok: false, error: 'invalid_rules' }, { status: 400 });
-      creditAccountLive.rules = rules.map((r: any, idx: number) => ({
-        id: r.id || `rule-${idx}`,
-        action: r.action,
-        cost: r.cost,
-        isEnabled: r.isEnabled,
-      }));
+      creditAccountLive.rules = (rules as unknown[]).map((rRaw, idx) => {
+        const r = rRaw as Record<string, unknown>;
+        const action =
+          typeof r.action === 'string'
+            ? (r.action as CreditRule['action'])
+            : ('lead_basic' as CreditRule['action']);
+        return {
+          id: typeof r.id === 'string' ? r.id : `rule-${idx}`,
+          action,
+          cost: typeof r.cost === 'number' ? r.cost : 0,
+          isEnabled: typeof r.isEnabled === 'boolean' ? r.isEnabled : Boolean(r.isEnabled),
+        };
+      });
       creditAccountLive.updatedAt = new Date();
       return HttpResponse.json({ ok: true, rules: creditAccountLive.rules });
     } catch {
@@ -281,9 +293,9 @@ export const handlers = [
 
       const masterIdx = mockContacts.findIndex((c) => c.id === masterId);
       if (masterIdx >= 0) {
-        mockContacts[masterIdx] = merged as any;
+        mockContacts[masterIdx] = merged;
       } else {
-        mockContacts.push(merged as any);
+        mockContacts.push(merged);
       }
 
       // record audit event
@@ -297,19 +309,26 @@ export const handlers = [
 
   // Credits consume (idempotent + rules + daily limit)
   (() => {
-    const idempotencyStore: Record<string, any> = {};
+    const idempotencyStore: Record<string, CreditLedgerEntry> = {};
 
     return http.post('/api/credits/consume', async (req) => {
       try {
-        const parsed = await req.request.json();
-        const idempotencyKey = req.headers.get('idempotency-key') || parsed.idempotencyKey;
+        const parsed = (await req.request.json()) as Record<string, unknown>;
+        const headerKey = req.headers.get('idempotency-key');
+        const idempotencyKey =
+          headerKey ?? (typeof parsed.idempotencyKey === 'string' ? parsed.idempotencyKey : undefined);
         if (!idempotencyKey) return HttpResponse.status(400);
 
         if (idempotencyStore[idempotencyKey]) {
           return HttpResponse.json({ ok: true, transaction: idempotencyStore[idempotencyKey], account: creditAccountLive });
         }
 
-        const { accountId, amount, action, referenceType, referenceId } = parsed;
+        const accountId = typeof parsed.accountId === 'string' ? parsed.accountId : undefined;
+        const action = typeof parsed.action === 'string' ? parsed.action : undefined;
+        const referenceType = typeof parsed.referenceType === 'string' ? parsed.referenceType : undefined;
+        const referenceId = typeof parsed.referenceId === 'string' ? parsed.referenceId : undefined;
+        const amount = typeof parsed.amount === 'number' ? parsed.amount : undefined;
+        if (!accountId || !action) return HttpResponse.status(400);
         const account = creditAccountLive;
         if (!account || account.id !== accountId) return HttpResponse.status(404);
 
@@ -332,7 +351,13 @@ export const handlers = [
         if (account.balance < cost) return HttpResponse.json({ ok: false, error: 'insufficient_balance' }, 402);
 
         // apply consumption
-        const { entry } = (await import('@/lib/credits/consume')).consumeCredits(account as any, ledgerLive as any, cost, { action, referenceType, referenceId, idempotencyKey });
+        const { consumeCredits } = await import('@/lib/credits/consume');
+        const { entry } = consumeCredits(account, ledgerLive, cost, {
+          action,
+          referenceType,
+          referenceId,
+          idempotencyKey,
+        });
 
         idempotencyStore[idempotencyKey] = entry;
 
@@ -340,9 +365,7 @@ export const handlers = [
         addAuditEvent({ action: 'credit_consumption', actor: 'agent-1', payload: { transactionId: entry.id, amount: cost, action, referenceId } });
 
         return HttpResponse.json({ ok: true, transaction: entry, account });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('credits consume error', e);
+      } catch {
         return HttpResponse.status(500);
       }
     });
@@ -350,9 +373,7 @@ export const handlers = [
 
   // Analytics endpoint (mock)
   http.post('/api/analytics', async (req) => {
-    const payload = await req.request.json();
-    // eslint-disable-next-line no-console
-    console.log('[msw] analytics event', payload);
+    await req.request.json();
     return HttpResponse.json({ ok: true });
   }),
 ];

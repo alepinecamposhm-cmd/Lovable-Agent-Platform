@@ -209,9 +209,12 @@ interface StageColumnProps {
   unreadIds: Set<string>;
   memberLookup: Record<string, string>;
   flash: Set<string>;
+  acceptingId: string | null;
+  onAccept: (lead: Lead) => void;
+  getAcceptCost: (lead: Lead) => number;
 }
 
-function StageColumn({ stage, leads, unreadIds, memberLookup, flash }: StageColumnProps) {
+function StageColumn({ stage, leads, unreadIds, memberLookup, flash, acceptingId, onAccept, getAcceptCost }: StageColumnProps) {
   const config = stageConfig[stage];
   const { setNodeRef, isOver } = useDroppable({ id: stage });
 
@@ -250,9 +253,9 @@ function StageColumn({ stage, leads, unreadIds, memberLookup, flash }: StageColu
                 unread={unreadIds.has(lead.id)}
                 assigneeName={memberLookup[lead.assignedTo || '']}
                 flash={flash.has(lead.id)}
-                onAccept={handleAcceptLead}
+                onAccept={onAccept}
                 accepting={acceptingId === lead.id}
-                acceptCost={getCostForAction(lead.source === 'marketplace' ? 'lead_premium' : 'lead_basic')}
+                acceptCost={getAcceptCost(lead)}
               />
             ))}
           </div>
@@ -845,6 +848,9 @@ export default function AgentLeads() {
                   unreadIds={unreadLeadIds}
                   memberLookup={memberLookup}
                   flash={assignmentFlash}
+                  acceptingId={acceptingId}
+                  onAccept={handleAcceptLead}
+                  getAcceptCost={(lead) => getCostForAction(lead.source === 'marketplace' ? 'lead_premium' : 'lead_basic')}
                 />
               ))}
             </div>

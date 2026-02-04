@@ -48,6 +48,7 @@ function save(data: Lead[]) {
 let leads = load();
 
 function emit() {
+  cachedSnapshot = null;
   listeners.forEach((l) => l());
 }
 
@@ -144,10 +145,20 @@ export function reassignLead(id: string, toAgentId: string) {
   emit();
 }
 
+let cachedSnapshot: { leads: Lead[]; error: string | null; _raw: Lead[] } | null = null;
+
+function getSnapshot() {
+  // useSyncExternalStore expects a stable reference when nothing changed.
+  if (!cachedSnapshot || cachedSnapshot._raw !== leads || cachedSnapshot.error !== loadError) {
+    cachedSnapshot = {
+      leads: listLeads(),
+      error: loadError,
+      _raw: leads,
+    };
+  }
+  return cachedSnapshot as { leads: Lead[]; error: string | null };
+}
+
 export function useLeadStore() {
-  return useSyncExternalStore(
-    subscribe,
-    () => ({ leads: listLeads(), error: loadError }),
-    () => ({ leads: listLeads(), error: loadError })
-  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

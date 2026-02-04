@@ -6,14 +6,15 @@ import type { Lead, Task } from '@/types/agents';
 const STORAGE_KEY = 'agenthub_tasks';
 const listeners = new Set<() => void>();
 
-function hydrateTask(raw: any): Task {
+function hydrateTask(raw: unknown): Task {
+  const r = raw as Record<string, unknown>;
   return {
-    ...raw,
-    dueAt: raw.dueAt ? parseISO(raw.dueAt) : undefined,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-    completedAt: raw.completedAt ? parseISO(raw.completedAt) : undefined,
-    snoozedUntil: raw.snoozedUntil ? parseISO(raw.snoozedUntil) : undefined,
-  } as Task;
+    ...(r as Task),
+    dueAt: r.dueAt ? parseISO(String(r.dueAt)) : undefined,
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+    completedAt: r.completedAt ? parseISO(String(r.completedAt)) : undefined,
+    snoozedUntil: r.snoozedUntil ? parseISO(String(r.snoozedUntil)) : undefined,
+  };
 }
 
 function load(): Task[] {
@@ -21,7 +22,9 @@ function load(): Task[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockTasks;
   try {
-    return JSON.parse(raw).map(hydrateTask);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockTasks;
+    return parsed.map(hydrateTask);
   } catch (e) {
     console.error('Failed to parse tasks', e);
     return mockTasks;
@@ -172,7 +175,9 @@ export function addNoShowFollowUp(appointment: { id: string; leadId?: string; le
   });
 }
 
-let cachedSnapshot: { tasks: Task[]; pending: number; _raw: Task[] } | null = null;
+type TaskSnapshot = { tasks: Task[]; pending: number; _raw: Task[] };
+
+let cachedSnapshot: TaskSnapshot | null = null;
 
 function getSnapshot() {
   if (!cachedSnapshot || cachedSnapshot._raw !== tasks) {
@@ -180,9 +185,9 @@ function getSnapshot() {
       tasks: listTasks(),
       pending: getPendingCount(),
       _raw: tasks,
-    } as any;
+    };
   }
-  return cachedSnapshot as { tasks: Task[]; pending: number };
+  return cachedSnapshot;
 }
 
 export function useTaskStore(): { tasks: Task[]; pending: number } {

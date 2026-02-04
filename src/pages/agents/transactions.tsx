@@ -42,7 +42,7 @@ export default function AgentTransactions() {
 
     useEffect(() => {
         fetchTransactions();
-    }, []);
+    }, [fetchTransactions]);
 
     const currencyFormatter = new Intl.NumberFormat('es-MX', {
         style: 'currency',

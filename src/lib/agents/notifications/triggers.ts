@@ -41,6 +41,6 @@ export function triggerCreditLow(balance: number) {
     type: 'credit',
     title: 'Saldo bajo',
     body: `Te quedan ${balance} créditos. Considera recargar.`,
-    actionUrl: '/agents/credits',
+    actionUrl: '/agents/credits?purchase=1',
   });
 }

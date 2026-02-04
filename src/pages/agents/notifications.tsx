@@ -160,7 +160,7 @@ export default function AgentNotifications() {
         open={blockModal.open}
         variant={blockModal.variant}
         onClose={() => setBlockModal({ ...blockModal, open: false })}
-        onRecharge={() => window.location.assign('/agents/credits')}
+        onRecharge={() => window.location.assign('/agents/credits?purchase=1')}
       />
     </motion.div>
   );

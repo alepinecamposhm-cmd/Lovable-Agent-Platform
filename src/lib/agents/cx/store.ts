@@ -5,8 +5,12 @@ import type { AgentFeedback } from '@/types/agents';
 const STORAGE_KEY = 'agenthub_cx_feedback';
 const listeners = new Set<() => void>();
 
-function hydrate(raw: any): AgentFeedback {
-  return { ...raw, createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date() } as AgentFeedback;
+function hydrate(raw: unknown): AgentFeedback {
+  const r = raw as Record<string, unknown>;
+  return {
+    ...(r as AgentFeedback),
+    createdAt: r.createdAt ? new Date(String(r.createdAt)) : new Date(),
+  };
 }
 
 function load(): AgentFeedback[] {
@@ -14,7 +18,9 @@ function load(): AgentFeedback[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockAgentFeedback;
   try {
-    return JSON.parse(raw).map(hydrate);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockAgentFeedback;
+    return parsed.map(hydrate);
   } catch (e) {
     return mockAgentFeedback;
   }

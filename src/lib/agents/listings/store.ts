@@ -8,23 +8,26 @@ const ACTIVITIES_KEY = 'agenthub_listing_activities';
 
 const listeners = new Set<() => void>();
 
-function hydrateListing(raw: any): Listing {
+function hydrateListing(raw: unknown): Listing {
+  const r = raw as Record<string, unknown>;
   return {
-    ...raw,
-    listedAt: raw.listedAt ? parseISO(raw.listedAt) : undefined,
-    expiresAt: raw.expiresAt ? parseISO(raw.expiresAt) : undefined,
-    featuredUntil: raw.featuredUntil ? parseISO(raw.featuredUntil) : undefined,
-    soldAt: raw.soldAt ? parseISO(raw.soldAt) : undefined,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-    updatedAt: raw.updatedAt ? parseISO(raw.updatedAt) : new Date(),
-  } as Listing;
+    ...(r as Listing),
+    listedAt: r.listedAt ? parseISO(String(r.listedAt)) : undefined,
+    expiresAt: r.expiresAt ? parseISO(String(r.expiresAt)) : undefined,
+    featuredUntil: r.featuredUntil ? parseISO(String(r.featuredUntil)) : undefined,
+    soldAt: r.soldAt ? parseISO(String(r.soldAt)) : undefined,
+    verificationSubmittedAt: r.verificationSubmittedAt ? parseISO(String(r.verificationSubmittedAt)) : undefined,
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+    updatedAt: r.updatedAt ? parseISO(String(r.updatedAt)) : new Date(),
+  };
 }
 
-function hydrateActivity(raw: any): ListingActivityEvent {
+function hydrateActivity(raw: unknown): ListingActivityEvent {
+  const r = raw as Record<string, unknown>;
   return {
-    ...raw,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-  } as ListingActivityEvent;
+    ...(r as ListingActivityEvent),
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+  };
 }
 
 function loadListings(): Listing[] {
@@ -32,7 +35,9 @@ function loadListings(): Listing[] {
   const raw = window.localStorage.getItem(LISTINGS_KEY);
   if (!raw) return mockListings;
   try {
-    return JSON.parse(raw).map(hydrateListing);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockListings;
+    return parsed.map(hydrateListing);
   } catch (e) {
     console.error('Failed to parse listings', e);
     return mockListings;
@@ -44,7 +49,9 @@ function loadActivities(): ListingActivityEvent[] {
   const raw = window.localStorage.getItem(ACTIVITIES_KEY);
   if (!raw) return mockListingActivities;
   try {
-    return JSON.parse(raw).map(hydrateActivity);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockListingActivities;
+    return parsed.map(hydrateActivity);
   } catch (e) {
     console.error('Failed to parse listing activities', e);
     return mockListingActivities;
@@ -59,6 +66,7 @@ function saveListings(data: Listing[]) {
     expiresAt: l.expiresAt ? formatISO(l.expiresAt) : undefined,
     featuredUntil: l.featuredUntil ? formatISO(l.featuredUntil) : undefined,
     soldAt: l.soldAt ? formatISO(l.soldAt) : undefined,
+    verificationSubmittedAt: l.verificationSubmittedAt ? formatISO(l.verificationSubmittedAt) : undefined,
     createdAt: formatISO(l.createdAt),
     updatedAt: formatISO(l.updatedAt),
   }));
@@ -113,17 +121,23 @@ export function addListing(input: Partial<Listing>) {
     yearBuilt: input.yearBuilt,
     amenities: input.amenities || [],
     description: input.description || '',
-    coverImage: input.coverImage,
-    features: input.features,
     media: input.media || [],
     virtualTourUrl: input.virtualTourUrl,
     status: input.status || 'draft',
+    archivedFromStatus: input.archivedFromStatus,
     verificationStatus: input.verificationStatus || 'none',
+    verificationSubmittedAt: input.verificationSubmittedAt,
+    verificationDocs: input.verificationDocs || [],
+    verificationReviewNote: input.verificationReviewNote,
     viewCount: 0,
     saveCount: 0,
     inquiryCount: 0,
     listedAt: input.listedAt,
     expiresAt: input.expiresAt,
+    soldAt: input.soldAt,
+    closedPrice: input.closedPrice,
+    closedBuyerName: input.closedBuyerName,
+    featuredUntil: input.featuredUntil,
     createdAt: now,
     updatedAt: now,
   } as Listing;
@@ -147,6 +161,17 @@ export function updateListing(id: string, patch: Partial<Listing>) {
   return previous;
 }
 
+export function deleteListing(id: string) {
+  const before = listings.length;
+  listings = listings.filter((l) => l.id !== id);
+  if (listings.length !== before) {
+    saveListings(listings);
+    emit();
+    return true;
+  }
+  return false;
+}
+
 export function addListingActivity(event: ListingActivityEvent) {
   activities = [event, ...activities];
   saveActivities(activities);
@@ -159,18 +184,25 @@ export function listListingActivities(listingId: string) {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-let cachedSnapshot: { listings: Listing[]; activities: ListingActivityEvent[]; _rawL: Listing[]; _rawA: ListingActivityEvent[] } | null = null;
+type ListingStoreSnapshot = {
+  listings: Listing[];
+  activities: ListingActivityEvent[];
+  _rawListings: Listing[];
+  _rawActivities: ListingActivityEvent[];
+};
+
+let cachedSnapshot: ListingStoreSnapshot | null = null;
 
 function getSnapshot() {
-  if (!cachedSnapshot || cachedSnapshot._rawL !== listings || cachedSnapshot._rawA !== activities) {
+  if (!cachedSnapshot || cachedSnapshot._rawListings !== listings || cachedSnapshot._rawActivities !== activities) {
     cachedSnapshot = {
       listings: listListings(),
       activities: activities.slice(),
-      _rawL: listings,
-      _rawA: activities,
-    } as any;
+      _rawListings: listings,
+      _rawActivities: activities,
+    };
   }
-  return cachedSnapshot as { listings: Listing[]; activities: ListingActivityEvent[] };
+  return cachedSnapshot;
 }
 
 export function useListingStore() {

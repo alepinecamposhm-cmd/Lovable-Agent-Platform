@@ -9,7 +9,7 @@ export function consumeCredits(
   account: CreditAccount,
   ledger: CreditLedgerEntry[],
   amount: number,
-  opts: { action: string; referenceType?: string; referenceId?: string; idempotencyKey?: string }
+  opts: { action: string; referenceType?: string; referenceId?: string; idempotencyKey?: string; description?: string }
 ): ConsumeResult {
   if (amount <= 0) throw new Error('Invalid amount');
 
@@ -22,7 +22,7 @@ export function consumeCredits(
     type: 'debit',
     amount,
     balance: newBalance,
-    description: `${opts.action}: ${opts.referenceId ?? ''}`.trim(),
+    description: opts.description || `${opts.action}: ${opts.referenceId ?? ''}`.trim(),
     referenceType: opts.referenceType,
     referenceId: opts.referenceId,
     createdAt: new Date(),

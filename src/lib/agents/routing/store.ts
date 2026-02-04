@@ -4,9 +4,11 @@ import { addAuditEvent } from '@/lib/audit/store';
 
 export interface RoutingRule {
   id: string;
-  zone: string;
+  // Zones and/or ZIPs that should trigger this rule (case-insensitive exact match).
+  locations: string[];
   minPrice?: number;
   maxPrice?: number;
+  leadType: 'any' | 'buy' | 'sell' | 'rent';
   assignToAgentId: string; // legacy single assignee
   assignees?: string[]; // multi-assign for round-robin
   strategy?: 'single' | 'round_robin';
@@ -28,14 +30,73 @@ function load(): RoutingRule[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return [];
   try {
-    const parsed: RoutingRule[] = JSON.parse(raw);
-    return parsed.map((rule, idx) => ({
-      active: true,
-      order: idx + 1,
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    let didMigrate = false;
+    const normalized = parsed.map((ruleRaw, idx) => {
+      const rule = ruleRaw as Record<string, unknown>;
+      const legacyZone = typeof rule.zone === 'string' ? rule.zone.trim() : undefined;
+      const locations = Array.isArray(rule.locations)
+        ? (rule.locations.filter((l): l is string => typeof l === 'string' && l.trim().length > 0).map((l) => l.trim()))
+        : legacyZone
+          ? [legacyZone]
+          : [];
+      if (!Array.isArray(rule.locations) && legacyZone) didMigrate = true;
+
+      const leadTypeRaw = typeof rule.leadType === 'string' ? rule.leadType : 'any';
+      const leadType: RoutingRule['leadType'] =
+        leadTypeRaw === 'buy' || leadTypeRaw === 'sell' || leadTypeRaw === 'rent' || leadTypeRaw === 'any'
+          ? leadTypeRaw
+          : 'any';
+      if (typeof rule.leadType !== 'string') didMigrate = true;
+
+      const legacyAssignIds = (rule as { assignAgentIds?: unknown }).assignAgentIds;
+      const legacyFirstAssignee =
+        Array.isArray(legacyAssignIds) && typeof legacyAssignIds[0] === 'string'
+          ? legacyAssignIds[0]
+          : undefined;
+      const assignToAgentId =
+        typeof rule.assignToAgentId === 'string' ? rule.assignToAgentId : legacyFirstAssignee || 'agent-1';
+      const assignees = Array.isArray(rule.assignees)
+        ? rule.assignees.filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+        : assignToAgentId
+          ? [assignToAgentId]
+          : [];
+
+      const minPrice = typeof rule.minPrice === 'number' ? rule.minPrice : undefined;
+      const maxPrice = typeof rule.maxPrice === 'number' ? rule.maxPrice : undefined;
+      const active = typeof rule.active === 'boolean' ? rule.active : true;
+      const order = typeof rule.order === 'number' ? rule.order : idx + 1;
+      const cursor = typeof rule.cursor === 'number' ? rule.cursor : 0;
+      const strategy = rule.strategy === 'round_robin' ? 'round_robin' : 'single';
+      const id = typeof rule.id === 'string' ? rule.id : `rule-${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+
+      return {
+        id,
+        locations,
+        minPrice,
+        maxPrice,
+        leadType,
+        assignToAgentId,
+        assignees,
+        strategy,
+        cursor,
+        active,
+        order,
+      } satisfies RoutingRule;
+    });
+    if (didMigrate) {
+      save(normalized);
+    }
+    return normalized.map((rule, idx) => ({
+      ...rule,
       strategy: rule.strategy || 'single',
       assignees: rule.assignees || (rule.assignToAgentId ? [rule.assignToAgentId] : []),
       cursor: rule.cursor ?? 0,
-      ...rule,
+      order: rule.order ?? idx + 1,
+      active: rule.active ?? true,
+      leadType: rule.leadType ?? 'any',
+      locations: rule.locations || [],
     }));
   } catch (e) {
     return [];
@@ -68,21 +129,24 @@ export function listRules() {
   return rules.slice().sort((a, b) => a.order - b.order);
 }
 
-export function addRule(input: Omit<RoutingRule, 'id' | 'order' | 'active'>) {
+export function addRule(
+  input: Omit<RoutingRule, 'id' | 'order' | 'active' | 'leadType'> & { leadType?: RoutingRule['leadType'] }
+) {
   const nextOrder = rules.length + 1;
   const rule: RoutingRule = {
     id: `rule-${globalThis.crypto?.randomUUID?.() || Date.now()}`,
     active: true,
     order: nextOrder,
-    strategy: input.strategy || 'single',
-    assignees: input.assignees && input.assignees.length > 0 ? input.assignees : [input.assignToAgentId],
     cursor: 0,
     ...input,
+    strategy: input.strategy || 'single',
+    leadType: input.leadType ?? 'any',
+    assignees: input.assignees && input.assignees.length > 0 ? input.assignees : [input.assignToAgentId],
   };
   rules = [...rules, rule];
   save(rules);
   emit();
-  addAuditEvent({ action: 'routing_rule_added', actor: 'agent-1', domain: 'team', payload: { zone: rule.zone, strategy: rule.strategy } });
+  addAuditEvent({ action: 'routing_rule_added', actor: 'agent-1', domain: 'team', payload: { locations: rule.locations, leadType: rule.leadType, strategy: rule.strategy } });
   return rule;
 }
 
@@ -133,11 +197,38 @@ export function togglePauseAgent(agentId: string, paused: boolean) {
   addAuditEvent({ action: paused ? 'agent_paused' : 'agent_resumed', actor: agentId, domain: 'team' });
 }
 
-export function matchAgent({ zone, price }: { zone?: string; price?: number }) {
+export function matchAgent({
+  zone,
+  zip,
+  preferredZones,
+  price,
+  interestedIn,
+}: {
+  zone?: string;
+  zip?: string;
+  preferredZones?: string[];
+  price?: number;
+  interestedIn?: 'buy' | 'sell' | 'rent';
+}) {
   const paused = getPausedAgents();
+  const inputLocations = [
+    zone,
+    zip,
+    ...(Array.isArray(preferredZones) ? preferredZones : []),
+  ]
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map((v) => v.trim().toLowerCase());
+
   const found = listRules().find((r) => {
     if (!r.active) return false;
-    if (zone && r.zone && r.zone.toLowerCase() !== zone.toLowerCase()) return false;
+    if (r.leadType !== 'any' && interestedIn && r.leadType !== interestedIn) return false;
+    if (r.leadType !== 'any' && !interestedIn) return false;
+    if (r.locations.length > 0) {
+      if (inputLocations.length === 0) return false;
+      const normalized = r.locations.map((l) => l.toLowerCase());
+      const hit = inputLocations.some((loc) => normalized.includes(loc));
+      if (!hit) return false;
+    }
     if (typeof price === 'number') {
       if (r.minPrice && price < r.minPrice) return false;
       if (r.maxPrice && price > r.maxPrice) return false;

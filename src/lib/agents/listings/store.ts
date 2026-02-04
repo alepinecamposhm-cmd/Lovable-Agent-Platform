@@ -8,23 +8,25 @@ const ACTIVITIES_KEY = 'agenthub_listing_activities';
 
 const listeners = new Set<() => void>();
 
-function hydrateListing(raw: any): Listing {
+function hydrateListing(raw: unknown): Listing {
+  const r = raw as Record<string, unknown>;
   return {
-    ...raw,
-    listedAt: raw.listedAt ? parseISO(raw.listedAt) : undefined,
-    expiresAt: raw.expiresAt ? parseISO(raw.expiresAt) : undefined,
-    featuredUntil: raw.featuredUntil ? parseISO(raw.featuredUntil) : undefined,
-    soldAt: raw.soldAt ? parseISO(raw.soldAt) : undefined,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-    updatedAt: raw.updatedAt ? parseISO(raw.updatedAt) : new Date(),
-  } as Listing;
+    ...(r as Listing),
+    listedAt: r.listedAt ? parseISO(String(r.listedAt)) : undefined,
+    expiresAt: r.expiresAt ? parseISO(String(r.expiresAt)) : undefined,
+    featuredUntil: r.featuredUntil ? parseISO(String(r.featuredUntil)) : undefined,
+    soldAt: r.soldAt ? parseISO(String(r.soldAt)) : undefined,
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+    updatedAt: r.updatedAt ? parseISO(String(r.updatedAt)) : new Date(),
+  };
 }
 
-function hydrateActivity(raw: any): ListingActivityEvent {
+function hydrateActivity(raw: unknown): ListingActivityEvent {
+  const r = raw as Record<string, unknown>;
   return {
-    ...raw,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-  } as ListingActivityEvent;
+    ...(r as ListingActivityEvent),
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+  };
 }
 
 function loadListings(): Listing[] {
@@ -32,7 +34,9 @@ function loadListings(): Listing[] {
   const raw = window.localStorage.getItem(LISTINGS_KEY);
   if (!raw) return mockListings;
   try {
-    return JSON.parse(raw).map(hydrateListing);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockListings;
+    return parsed.map(hydrateListing);
   } catch (e) {
     console.error('Failed to parse listings', e);
     return mockListings;
@@ -44,7 +48,9 @@ function loadActivities(): ListingActivityEvent[] {
   const raw = window.localStorage.getItem(ACTIVITIES_KEY);
   if (!raw) return mockListingActivities;
   try {
-    return JSON.parse(raw).map(hydrateActivity);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockListingActivities;
+    return parsed.map(hydrateActivity);
   } catch (e) {
     console.error('Failed to parse listing activities', e);
     return mockListingActivities;
@@ -168,7 +174,7 @@ function getSnapshot() {
       activities: activities.slice(),
       _rawL: listings,
       _rawA: activities,
-    } as any;
+    };
   }
   return cachedSnapshot as { listings: Listing[]; activities: ListingActivityEvent[] };
 }

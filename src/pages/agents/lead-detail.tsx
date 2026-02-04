@@ -96,7 +96,8 @@ export default function AgentLeadDetail() {
   const { leads } = useLeadStore();
   const { tasks } = useTaskStore();
   const { members } = useTeamStore();
-  const lead = leads.find((l) => l.id === params.leadId);
+  const leadId = params.leadId ?? '';
+  const lead = leads.find((l) => l.id === leadId);
   const [stage, setStage] = useState<LeadStage>(lead?.stage ?? 'new');
   const [noteDraft, setNoteDraft] = useState(lead?.notes || '');
   const [taskDraft, setTaskDraft] = useState('');
@@ -104,6 +105,23 @@ export default function AgentLeadDetail() {
   const [assignee, setAssignee] = useState<string>(lead?.assignedTo || members[0]?.id || '');
   const [isAssigning, setIsAssigning] = useState(false);
   const currentUser = getCurrentUser();
+
+  const activities = useMemo(() => {
+    if (!leadId) return [];
+    return mockLeadActivities
+      .filter((a) => a.leadId === leadId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }, [leadId]);
+
+  const leadTasks = useMemo(() => {
+    if (!leadId) return [];
+    return tasks.filter((t) => t.leadId === leadId);
+  }, [tasks, leadId]);
+
+  const leadAppointments = useMemo(() => {
+    if (!leadId) return [];
+    return mockAppointments.filter((apt) => apt.leadId === leadId);
+  }, [leadId]);
 
   useEffect(() => {
     if (lead) setStage(lead.stage);
@@ -130,24 +148,6 @@ export default function AgentLeadDetail() {
       </div>
     );
   }
-
-  const activities = useMemo(
-    () =>
-      mockLeadActivities
-        .filter((a) => a.leadId === lead.id)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-    [lead.id]
-  );
-
-  const leadTasks = useMemo(
-    () => tasks.filter((t) => t.leadId === lead.id),
-    [tasks, lead.id]
-  );
-
-  const leadAppointments = useMemo(
-    () => mockAppointments.filter((apt) => apt.leadId === lead.id),
-    [lead.id]
-  );
 
   const canManageAssignments = currentUser.role === 'owner' || currentUser.role === 'admin';
 

@@ -34,7 +34,7 @@ import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { useConsumeCredits, useCreditAccount } from '@/lib/credits/query';
 import { InsufficientCreditsDialog } from '@/components/agents/credits/InsufficientCreditsDialog';
-import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
+import type { Lead, Listing, ListingStatus, VerificationStatus } from '@/types/agents';
 
 const statusConfig: Record<ListingStatus, { label: string; color: string; pill: string }> = {
   draft: { label: 'Borrador', color: 'text-muted-foreground', pill: 'bg-muted text-muted-foreground' },
@@ -57,7 +57,8 @@ export default function AgentListingDetail() {
   const params = useParams();
   const navigate = useNavigate();
   const { listings } = useListingStore();
-  const listing = listings.find((l) => l.id === params.listingId);
+  const listingId = params.listingId ?? '';
+  const listing = listings.find((l) => l.id === listingId);
   const [status, setStatus] = useState<ListingStatus>(listing?.status ?? 'draft');
   const [verification, setVerification] = useState<VerificationStatus>(listing?.verificationStatus ?? 'none');
   const isFeatured = listing?.featuredUntil && listing.featuredUntil > new Date();
@@ -75,30 +76,20 @@ export default function AgentListingDetail() {
   const [openHouseTime, setOpenHouseTime] = useState('12:00');
   const [scheduling, setScheduling] = useState(false);
 
-  if (!listing) {
-    return (
-      <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />
-          Volver
-        </Button>
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            Propiedad no encontrada.
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const engagement = useMemo(
-    () => [
+  const engagement = useMemo(() => {
+    if (!listing) {
+      return [
+        { label: 'Vistas', icon: Eye, value: 0 },
+        { label: 'Guardados', icon: Heart, value: 0 },
+        { label: 'Consultas', icon: MessageSquare, value: 0 },
+      ];
+    }
+    return [
       { label: 'Vistas', icon: Eye, value: listing.viewCount },
       { label: 'Guardados', icon: Heart, value: listing.saveCount },
       { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
-    ],
-    [listing]
-  );
+    ];
+  }, [listing]);
 
   const handleVerify = async () => {
     const rule = creditAccount?.rules.find((r) => r.action === 'verification_request');
@@ -162,7 +153,7 @@ export default function AgentListingDetail() {
       const [hours, minutes] = openHouseTime.split(':').map(Number);
       const date = new Date(openHouseDate);
       date.setHours(hours || 12, minutes || 0, 0, 0);
-      const pseudoLead = {
+      const pseudoLead: Lead = {
         id: `open-house-${listing.id}`,
         firstName: 'Open House',
         lastName: listing.address.street,
@@ -178,7 +169,7 @@ export default function AgentListingDetail() {
         scheduledAt: date,
         duration: 90,
         leadId: pseudoLead.id,
-        lead: pseudoLead as any,
+        lead: pseudoLead,
         agentId: listing.agentId,
         listingId: listing.id,
         listing,
@@ -236,21 +227,37 @@ export default function AgentListingDetail() {
 
   useEffect(() => {
     try {
-      if (!listing) {
+      if (!listingId) {
         setActivityState('empty');
         return;
       }
-      const events = listListingActivities(listing.id);
+      const events = listListingActivities(listingId);
       if (!events.length) {
         setActivityState('empty');
       } else {
         setActivityFeed(events);
         setActivityState('success');
       }
-    } catch (e) {
+    } catch {
       setActivityState('error');
     }
-  }, [listing?.id]);
+  }, [listingId]);
+
+  if (!listing) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Volver
+        </Button>
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Propiedad no encontrada.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <>

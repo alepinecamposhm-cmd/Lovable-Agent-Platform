@@ -40,6 +40,7 @@ import { BuyCreditsDialog } from '@/components/agents/credits/BuyCreditsDialog';
 import { useCreditAccount, useCreditLedger, useUpdateCreditAccount, useSaveCreditRules, useSaveCreditLimits, useCreditMetrics, useCreditInvoices } from '@/lib/credits/query';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import type { CreditLedgerEntry } from '@/types/agents';
 
 const PER_PAGE = 10;
 const INVOICE_PER_PAGE = 10;
@@ -111,7 +112,7 @@ export default function AgentCredits() {
   const [activeTab, setActiveTab] = useState<'overview' | 'invoices'>('overview');
   const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [ledgerDetail, setLedgerDetail] = useState<{ entry: any; reference?: { type: string; label: string; path: string } } | null>(null);
+  const [ledgerDetail, setLedgerDetail] = useState<{ entry: CreditLedgerEntry; reference?: { type: string; label: string; path: string } } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
@@ -227,12 +228,18 @@ export default function AgentCredits() {
     setDetailError(null);
     try {
       const res = await fetch(`/api/credits/ledger/${id}`);
-      const json = await res.json();
+      const json = (await res.json()) as { ok?: boolean; entry?: unknown; reference?: unknown; error?: string };
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar el detalle');
-      setLedgerDetail({ entry: json.entry, reference: json.reference });
+      const entryRaw = (json.entry ?? {}) as Record<string, unknown>;
+      const entry: CreditLedgerEntry = {
+        ...(entryRaw as CreditLedgerEntry),
+        createdAt: entryRaw.createdAt ? new Date(String(entryRaw.createdAt)) : new Date(),
+      };
+      const reference = json.reference as { type: string; label: string; path: string } | undefined;
+      setLedgerDetail({ entry, reference });
       track('credits_ledger_item_open', { id });
-    } catch (e: any) {
-      setDetailError(e?.message || 'No se pudo cargar el detalle');
+    } catch (e: unknown) {
+      setDetailError(e instanceof Error ? e.message : 'No se pudo cargar el detalle');
     } finally {
       setDetailLoading(false);
     }

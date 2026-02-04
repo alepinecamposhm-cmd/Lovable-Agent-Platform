@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cart
 import { mockCreditAccount, mockLedger } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { Download } from 'lucide-react';
+import { ReportsSubnav } from '@/components/agents/reports/ReportsSubnav';
+import { track } from '@/lib/agents/reports/analytics';
 
 export default function AgentRoiReport() {
   const [filter, setFilter] = useState('30');
@@ -23,6 +25,10 @@ export default function AgentRoiReport() {
   const totalGasto = mockLedger.filter(l => l.type === 'debit').reduce((s, l) => s + l.amount, 0);
   const totalIngresos = 850; // mock
 
+  useEffect(() => {
+    track('reports.view', { report: 'roi' });
+  }, []);
+
   return (
     <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-6">
       <motion.div variants={staggerItem} className="flex items-start justify-between gap-4">
@@ -34,6 +40,10 @@ export default function AgentRoiReport() {
           <Input value={filter} onChange={(e) => setFilter(e.target.value)} className="w-24" />
           <Button variant="outline" size="sm" className="gap-2"><Download className="h-4 w-4" /> Export (mock)</Button>
         </div>
+      </motion.div>
+
+      <motion.div variants={staggerItem}>
+        <ReportsSubnav />
       </motion.div>
 
       <motion.div variants={staggerItem} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

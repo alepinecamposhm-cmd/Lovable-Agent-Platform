@@ -17,8 +17,12 @@ const defaults: IntegrationState[] = [
   { id: 'showingtime', name: 'ShowingTime', description: 'Sincroniza citas y disponibilidad.', status: 'disconnected' },
 ];
 
-function hydrate(raw: any): IntegrationState {
-  return { ...raw, lastSyncedAt: raw.lastSyncedAt ? new Date(raw.lastSyncedAt) : undefined };
+function hydrate(raw: unknown): IntegrationState {
+  const r = raw as Record<string, unknown>;
+  return {
+    ...(r as IntegrationState),
+    lastSyncedAt: r.lastSyncedAt ? new Date(String(r.lastSyncedAt)) : undefined,
+  };
 }
 
 function load(): IntegrationState[] {
@@ -26,7 +30,9 @@ function load(): IntegrationState[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return defaults;
   try {
-    return JSON.parse(raw).map(hydrate);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return defaults;
+    return parsed.map(hydrate);
   } catch (e) {
     return defaults;
   }

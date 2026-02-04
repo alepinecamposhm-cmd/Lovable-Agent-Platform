@@ -55,7 +55,12 @@ function loadLedgerSeed(): CreditLedgerEntry[] {
     return seed;
   }
   try {
-    return (JSON.parse(raw) as any[]).map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return cloneLedgerSeed();
+    return parsed.map((eRaw) => {
+      const e = eRaw as Record<string, unknown>;
+      return { ...(e as CreditLedgerEntry), createdAt: new Date(String(e.createdAt)) };
+    });
   } catch {
     const seed = cloneLedgerSeed();
     window.localStorage.setItem(LEDGER_SEED_KEY, JSON.stringify(seed));
@@ -77,7 +82,12 @@ function loadInvoiceSeed(): CreditInvoice[] {
     return seed;
   }
   try {
-    return (JSON.parse(raw) as any[]).map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
+    return parsed.map((eRaw) => {
+      const e = eRaw as Record<string, unknown>;
+      return { ...(e as CreditInvoice), createdAt: new Date(String(e.createdAt)) };
+    });
   } catch {
     const seed = mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
     window.localStorage.setItem(INVOICE_SEED_KEY, JSON.stringify(seed));
@@ -268,7 +278,10 @@ async function fetchInvoices(params: { page: number; pageSize?: number }): Promi
     const res = await fetch(`/api/credits/invoices?${search.toString()}`);
     const json = await res.json();
     if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudieron cargar las facturas');
-    const invoices = (json.invoices || []).map((i: any) => ({ ...i, createdAt: new Date(i.createdAt) })) as CreditInvoice[];
+    const invoices = (Array.isArray(json.invoices) ? json.invoices : []).map((iRaw: unknown) => {
+      const i = iRaw as Record<string, unknown>;
+      return { ...(i as CreditInvoice), createdAt: new Date(String(i.createdAt)) } satisfies CreditInvoice;
+    });
     if (!invoices.length) return fallback();
     saveInvoiceSeed(invoices);
     return {

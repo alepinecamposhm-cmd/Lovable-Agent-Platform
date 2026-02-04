@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,11 +12,17 @@ import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { addFeedback, useCxStore } from '@/lib/agents/cx/store';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { Star, Plus, Filter, Loader2 } from 'lucide-react';
+import { ReportsSubnav } from '@/components/agents/reports/ReportsSubnav';
+import { track } from '@/lib/agents/reports/analytics';
 
 export default function AgentExperienceReport() {
   const feedback = useCxStore();
   const [filterRating, setFilterRating] = useState<'all' | number>('all');
   const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    track('reports.view', { report: 'cx' });
+  }, []);
   const filtered = useMemo(() => {
     return feedback.filter((f) => filterRating === 'all' || f.rating === filterRating);
   }, [feedback, filterRating]);
@@ -56,6 +62,10 @@ export default function AgentExperienceReport() {
             {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Solicitar reseña
           </Button>
         </div>
+      </motion.div>
+
+      <motion.div variants={staggerItem}>
+        <ReportsSubnav />
       </motion.div>
 
       <motion.div variants={staggerItem} className="grid gap-4 lg:grid-cols-3">

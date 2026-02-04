@@ -68,6 +68,9 @@ export interface Lead {
   lastName?: string;
   email?: string;
   phone?: string;
+  // Contextual fields (PDF: Data Model Mínimo + Lead Details flow)
+  listingId?: string;
+  message?: string;
   stage: LeadStage;
   score?: number;
   temperature: 'cold' | 'warm' | 'hot';
@@ -81,6 +84,8 @@ export interface Lead {
   priceBucket?: string;
   budgetMin?: number;
   budgetMax?: number;
+  timeframe?: LeadTimeframe;
+  preApproved?: boolean;
   preferredZones?: string[];
   notes?: string;
   tags?: string[];
@@ -102,6 +107,13 @@ export type LeadStage =
   | 'toured'
   | 'closed'
   | 'closed_lost';
+
+// PDF (Data Model Mínimo): timeframe is used for filtering/prioritization.
+export type LeadTimeframe =
+  | '0-3 months'
+  | '3-6 months'
+  | '6-12 months'
+  | '12+ months';
 
 export type LeadSource = 
   | 'marketplace'
@@ -138,7 +150,8 @@ export type LeadActivityType =
   | 'appointment_scheduled'
   | 'appointment_completed'
   | 'assignment_changed'
-  | 'property_viewed';
+  | 'property_viewed'
+  | 'property_saved';
 
 // ============ CONTACTS ============
 

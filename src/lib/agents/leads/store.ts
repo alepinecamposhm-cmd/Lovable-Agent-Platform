@@ -5,6 +5,7 @@ import type { Lead, LeadStage } from '@/types/agents';
 
 const STORAGE_KEY = 'agenthub_leads';
 const listeners = new Set<() => void>();
+let loadError: string | null = null;
 
 function load(): Lead[] {
   if (typeof window === 'undefined') return mockLeads;
@@ -23,7 +24,8 @@ function load(): Lead[] {
     }));
     return parsed;
   } catch (e) {
-    console.error('Failed to parse leads from storage', e);
+    loadError = 'Failed to parse leads from storage';
+    console.error(loadError, e);
     return mockLeads;
   }
 }
@@ -46,6 +48,7 @@ function save(data: Lead[]) {
 let leads = load();
 
 function emit() {
+  cachedSnapshot = null;
   listeners.forEach((l) => l());
 }
 
@@ -142,10 +145,20 @@ export function reassignLead(id: string, toAgentId: string) {
   emit();
 }
 
+let cachedSnapshot: { leads: Lead[]; error: string | null; _raw: Lead[] } | null = null;
+
+function getSnapshot() {
+  // useSyncExternalStore expects a stable reference when nothing changed.
+  if (!cachedSnapshot || cachedSnapshot._raw !== leads || cachedSnapshot.error !== loadError) {
+    cachedSnapshot = {
+      leads: listLeads(),
+      error: loadError,
+      _raw: leads,
+    };
+  }
+  return cachedSnapshot as { leads: Lead[]; error: string | null };
+}
+
 export function useLeadStore() {
-  return useSyncExternalStore(
-    subscribe,
-    () => ({ leads: listLeads() }),
-    () => ({ leads: listLeads() })
-  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

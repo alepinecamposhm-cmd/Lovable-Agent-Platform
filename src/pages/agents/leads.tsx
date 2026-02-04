@@ -25,11 +25,13 @@ import {
   Filter,
   LayoutGrid,
   List,
+  Table2,
   Phone,
   Mail,
   ChevronRight,
   Sparkles,
   Loader2,
+  X,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,10 +42,9 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Lead, LeadStage } from '@/types/agents';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import confetti from 'canvas-confetti';
-import { differenceInHours, formatDistanceToNow } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { differenceInHours } from 'date-fns';
 import { add as addNotification, useNotificationStore } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -54,6 +55,10 @@ import { getCurrentUser, listMembers, subscribe as subscribeTeam } from '@/lib/a
 import { useConsumeCredits } from '@/lib/credits/query';
 import { InsufficientCreditsDialog } from '@/components/agents/credits/InsufficientCreditsDialog';
 import { useCreditAccount } from '@/lib/credits/query';
+import { LeadsCrmTable } from '@/components/agents/leads/LeadsCrmTable';
+import { LeadsFiltersSheet } from '@/components/agents/leads/LeadsFiltersSheet';
+import { getDefaultLeadsQueryState, parseLeadsQuery, serializeLeadsQuery, type LeadsQueryState, type LeadsViewMode } from '@/components/agents/leads/leadsFiltersQuery';
+import { addLead, updateLeadStage, useLeadStore } from '@/lib/agents/leads/store';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -86,6 +91,8 @@ interface LeadCardProps {
 }
 
 function LeadCard({ lead, unread, isDragging, onAccept, accepting, acceptCost, assigneeName, flash }: LeadCardProps) {
+  const location = useLocation();
+  const backTo = `${location.pathname}${location.search}`;
   const {
     attributes,
     listeners,
@@ -186,7 +193,7 @@ function LeadCard({ lead, unread, isDragging, onAccept, accepting, acceptCost, a
             </Button>
           )}
         </div>
-        <Link to={`/agents/leads/${lead.id}`}>
+        <Link to={`/agents/lead/${lead.id}`} state={{ backTo }}>
           <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Ver detalle">
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
@@ -202,9 +209,12 @@ interface StageColumnProps {
   unreadIds: Set<string>;
   memberLookup: Record<string, string>;
   flash: Set<string>;
+  acceptingId: string | null;
+  onAccept: (lead: Lead) => void;
+  getAcceptCost: (lead: Lead) => number;
 }
 
-function StageColumn({ stage, leads, unreadIds, memberLookup, flash }: StageColumnProps) {
+function StageColumn({ stage, leads, unreadIds, memberLookup, flash, acceptingId, onAccept, getAcceptCost }: StageColumnProps) {
   const config = stageConfig[stage];
   const { setNodeRef, isOver } = useDroppable({ id: stage });
 
@@ -243,9 +253,9 @@ function StageColumn({ stage, leads, unreadIds, memberLookup, flash }: StageColu
                 unread={unreadIds.has(lead.id)}
                 assigneeName={memberLookup[lead.assignedTo || '']}
                 flash={flash.has(lead.id)}
-                onAccept={handleAcceptLead}
+                onAccept={onAccept}
                 accepting={acceptingId === lead.id}
-                acceptCost={getCostForAction(lead.source === 'marketplace' ? 'lead_premium' : 'lead_basic')}
+                acceptCost={getAcceptCost(lead)}
               />
             ))}
           </div>
@@ -262,11 +272,13 @@ function StageColumn({ stage, leads, unreadIds, memberLookup, flash }: StageColu
 }
 
 export default function AgentLeads() {
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { leads, error: leadsError } = useLeadStore();
   const { notifications } = useNotificationStore();
-  const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [stageFilter, setStageFilter] = useState<LeadStage[] | 'all'>('all');
   const [onlyNew, setOnlyNew] = useState(false);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -274,10 +286,7 @@ export default function AgentLeads() {
   const [insufficientOpen, setInsufficientOpen] = useState(false);
   const [insufficientVariant, setInsufficientVariant] = useState<'balance' | 'daily_limit' | 'rule_disabled'>('balance');
   const [insufficientMeta, setInsufficientMeta] = useState<{ dailyLimit?: number; spentToday?: number } | undefined>();
-  const [viewAllTeam, setViewAllTeam] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return window.localStorage.getItem('agenthub_view_all_leads') === 'true';
-  });
+  const [hydrated, setHydrated] = useState(false);
   const [teamMembers, setTeamMembers] = useState(listMembers());
   const [assignmentFlash, setAssignmentFlash] = useState<Set<string>>(new Set());
   const assignmentRef = useRef<Record<string, string>>({});
@@ -285,6 +294,48 @@ export default function AgentLeads() {
   const canViewTeam = currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'broker';
   const { mutateAsync: consumeCredits } = useConsumeCredits();
   const { data: creditAccount } = useCreditAccount();
+  const invalidToastShown = useRef(false);
+
+  const parsedQuery = useMemo(() => parseLeadsQuery(searchParams), [searchParams]);
+  const queryState: LeadsQueryState = useMemo(() => {
+    if (canViewTeam) return parsedQuery.state;
+    if (parsedQuery.state.filters.assignment.scope !== 'mine') {
+      return { ...parsedQuery.state, filters: { ...parsedQuery.state.filters, assignment: { scope: 'mine' } } };
+    }
+    return parsedQuery.state;
+  }, [parsedQuery.state, canViewTeam]);
+
+  const viewMode: LeadsViewMode = queryState.view;
+  const filters = queryState.filters;
+  const backTo = `${location.pathname}${location.search}`;
+  const isLoading = !hydrated;
+
+  const commitQuery = (next: LeadsQueryState, opts?: { replace?: boolean }) => {
+    const nextParams = serializeLeadsQuery(next, searchParams);
+    setSearchParams(nextParams, { replace: opts?.replace ?? true });
+  };
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    const hadInvalid = parsedQuery.hadInvalid || (!canViewTeam && parsedQuery.state.filters.assignment.scope !== 'mine');
+    if (!hadInvalid) return;
+    if (!invalidToastShown.current) {
+      invalidToastShown.current = true;
+      toast({ title: 'Filtros inválidos', description: 'Restauramos filtros por defecto.' });
+    }
+    commitQuery(queryState, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedQuery.hadInvalid, canViewTeam]);
+
+  useEffect(() => {
+    if (viewMode === 'crm') {
+      track('leads.crm_view_opened', { view: 'crm', source: 'leads_page' });
+    }
+  }, [viewMode]);
+
   const staleCount = useMemo(
     () => leads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
     [leads]
@@ -294,12 +345,6 @@ export default function AgentLeads() {
     teamMembers.forEach((m) => { map[m.id] = m.firstName; });
     return map;
   }, [teamMembers]);
-
-  useEffect(() => {
-    fetch('/api/leads')
-      .then((res) => res.json())
-      .then((data) => setLeads(data));
-  }, []);
 
   useEffect(() => {
     const unsub = subscribeTeam(() => setTeamMembers(listMembers()));
@@ -347,25 +392,18 @@ export default function AgentLeads() {
           type: 'task',
           title: 'Nudge SLA: Lead sin respuesta',
           body: `${lead.firstName} lleva >2h en New`,
-          actionUrl: `/agents/leads/${lead.id}`,
+          actionUrl: `/agents/lead/${lead.id}`,
         });
         toast({
           title: 'Nudge SLA',
           description: `${lead.firstName} espera respuesta. Creamos una tarea.`,
-          action: <ToastAction altText="Abrir lead" onClick={() => window.location.assign(`/agents/leads/${lead.id}`)}>Ver lead</ToastAction>,
+          action: <ToastAction altText="Abrir lead" onClick={() => navigate(`/agents/lead/${lead.id}`, { state: { backTo } })}>Ver lead</ToastAction>,
         });
         window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'sla.nudge_shown', leadId: lead.id } }));
         localStorage.setItem('agenthub_sla_notified', '1');
       }
     }
-  }, [leads]);
-
-  useEffect(() => {
-    if (!canViewTeam && viewAllTeam) {
-      setViewAllTeam(false);
-      if (typeof window !== 'undefined') window.localStorage.removeItem('agenthub_view_all_leads');
-    }
-  }, [canViewTeam, viewAllTeam]);
+  }, [leads, navigate, backTo]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -375,27 +413,37 @@ export default function AgentLeads() {
   const unreadLeadIds = useMemo(() => {
     return new Set(
       notifications
-        .filter((n) => n.type === 'message' && n.status === 'unread' && n.actionUrl?.includes('/agents/leads/'))
+        .filter((n) => n.type === 'message' && n.status === 'unread' && (n.actionUrl?.includes('/agents/leads/') || n.actionUrl?.includes('/agents/lead/')))
         .map((n) => n.actionUrl?.split('/').pop() || '')
         .filter(Boolean)
     );
   }, [notifications]);
 
+  const assignmentAgentId = filters.assignment.scope === 'agent' ? filters.assignment.agentId : '';
+
   const filteredLeads = useMemo(() => {
     const text = searchQuery.toLowerCase();
-    const scoped = (viewAllTeam && canViewTeam)
-      ? leads
-      : leads.filter((l) => l.assignedTo === currentUser.id);
+    const scoped = filters.assignment.scope === 'mine'
+      ? leads.filter((l) => l.assignedTo === currentUser.id)
+      : filters.assignment.scope === 'team'
+        ? leads
+        : leads.filter((l) => l.assignedTo === filters.assignment.agentId);
+
     return scoped
       .filter((lead) =>
         [lead.firstName, lead.lastName, lead.email, lead.phone]
           .filter(Boolean)
           .some((value) => value?.toLowerCase().includes(text))
       )
-      .filter((lead) => stageFilter === 'all' || stageFilter.includes(lead.stage))
+      .filter((lead) => filters.stages === 'all' || filters.stages.includes(lead.stage))
+      .filter((lead) => filters.timeframe === 'all' || lead.timeframe === filters.timeframe)
+      .filter((lead) => {
+        if (filters.preApproved === 'all') return true;
+        return filters.preApproved === 'yes' ? lead.preApproved === true : lead.preApproved === false;
+      })
       .filter((lead) => !onlyNew || differenceInHours(new Date(), lead.createdAt) <= 48 || lead.stage === 'new')
       .filter((lead) => !onlyUnread || unreadLeadIds.has(lead.id));
-  }, [leads, searchQuery, stageFilter, onlyNew, onlyUnread, unreadLeadIds, viewAllTeam, currentUser.role, currentUser.id]);
+  }, [leads, searchQuery, filters.assignment.scope, assignmentAgentId, filters.preApproved, filters.stages, filters.timeframe, onlyNew, onlyUnread, unreadLeadIds, currentUser.id]);
 
   const leadsByStage = useMemo(() => {
     return pipelineStages.reduce((acc, stage) => {
@@ -432,9 +480,7 @@ export default function AgentLeads() {
         referenceType: 'lead',
         referenceId: lead.id,
       });
-      setLeads((prev) =>
-        prev.map((l) => (l.id === lead.id ? { ...l, stage: 'contacted' } : l))
-      );
+      updateLeadStage(lead.id, 'contacted');
       toast({
         title: 'Lead aceptado',
         description: `Se descontaron ${cost} créditos.`,
@@ -491,9 +537,7 @@ export default function AgentLeads() {
     if (!lead || lead.stage === targetStage) return;
 
     const previousStage = lead.stage;
-    
-    // TODO: replace with API call
-    setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: targetStage! } : l));
+    updateLeadStage(activeLeadId, targetStage);
 
     const stageLabel = stageConfig[targetStage].label;
     toast({
@@ -502,8 +546,7 @@ export default function AgentLeads() {
       duration: 5000,
       action: (
         <ToastAction altText="Deshacer" onClick={() => {
-          // TODO: replace with API call
-          setLeads(prev => prev.map(l => l.id === activeLeadId ? { ...l, stage: previousStage } : l));
+          updateLeadStage(activeLeadId, previousStage);
         }}>
           Deshacer
         </ToastAction>
@@ -514,7 +557,7 @@ export default function AgentLeads() {
       type: targetStage === 'appointment_set' ? 'appointment' : 'lead',
       title: targetStage === 'appointment_set' ? 'Cita programada' : `Lead movido a ${stageLabel}`,
       body: `${lead.firstName} ${lead.lastName || ''}`.trim(),
-      actionUrl: `/agents/leads/${activeLeadId}`,
+      actionUrl: `/agents/lead/${activeLeadId}`,
     });
 
     if (targetStage === 'closed') {
@@ -524,22 +567,16 @@ export default function AgentLeads() {
 
   const handleAddLead = () => {
     const random = Math.floor(Math.random() * 900) + 100;
-    const assignedTo = matchAgent({ zone: 'Polanco', price: 5000000 }) || 'agent-1';
-    const newLead: Lead = {
-      id: `lead-${Date.now()}`,
-      agentId: assignedTo,
+    const assignedTo = matchAgent({ zone: 'Polanco', price: 5000000 }) || currentUser.id;
+    const newLead = addLead({
       firstName: `Lead ${random}`,
       lastName: 'Demo',
       stage: 'new',
       interestedIn: 'buy',
       source: 'marketplace',
       temperature: 'warm',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      conversationId: `conv-${Date.now()}`,
-    };
-    // TODO: replace with API call
-    setLeads(prev => [newLead, ...prev]);
+      assignedTo,
+    });
 
     toast({
       title: 'Lead creado',
@@ -549,19 +586,34 @@ export default function AgentLeads() {
       type: 'lead',
       title: 'Nuevo lead asignado',
       body: `${newLead.firstName} acaba de ingresar`,
-      actionUrl: `/agents/leads/${newLead.id}`,
+      actionUrl: `/agents/lead/${newLead.id}`,
     });
   };
 
-  const toggleStageFilter = (stage: LeadStage) => {
-    if (stageFilter === 'all') {
-      setStageFilter([stage]);
-    } else {
-      const next = stageFilter.includes(stage)
-        ? stageFilter.filter((s) => s !== stage)
-        : [...stageFilter, stage];
-      setStageFilter(next.length === pipelineStages.length ? 'all' : next);
+  const openLead = (lead: Lead, source: 'crm' | 'list' | 'pipeline' = 'crm') => {
+    if (source === 'crm') {
+      track('leads.crm_row_opened', { leadId: lead.id, stage: lead.stage, source: lead.source });
     }
+    navigate(`/agents/lead/${lead.id}`, { state: { backTo } });
+  };
+
+  const toggleStageFilter = (stage: LeadStage) => {
+    const current = filters.stages === 'all' ? [] : filters.stages;
+    const next = current.includes(stage) ? current.filter((s) => s !== stage) : [...current, stage];
+    const normalized = next.length === 0 ? 'all' : next;
+    commitQuery({ ...queryState, filters: { ...filters, stages: normalized } }, { replace: false });
+  };
+
+  const hasAdvancedFilters =
+    filters.stages !== 'all' ||
+    filters.timeframe !== 'all' ||
+    filters.preApproved !== 'all' ||
+    filters.assignment.scope !== 'mine';
+
+  const clearAdvancedFilters = () => {
+    const defaults = getDefaultLeadsQueryState();
+    commitQuery({ ...queryState, filters: defaults.filters }, { replace: false });
+    track('leads.filters_cleared', { view: viewMode });
   };
 
   return (
@@ -608,16 +660,16 @@ export default function AgentLeads() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge
-              variant={stageFilter === 'all' ? 'default' : 'outline'}
+              variant={filters.stages === 'all' ? 'default' : 'outline'}
               className="cursor-pointer"
-              onClick={() => setStageFilter('all')}
+              onClick={() => commitQuery({ ...queryState, filters: { ...filters, stages: 'all' } }, { replace: false })}
             >
               Todos
             </Badge>
-            {pipelineStages.map((stage) => (
+            {[...pipelineStages, 'closed_lost' as const].map((stage) => (
               <Badge
                 key={stage}
-                variant={stageFilter !== 'all' && stageFilter.includes(stage) ? 'default' : 'outline'}
+                variant={filters.stages !== 'all' && filters.stages.includes(stage) ? 'default' : 'outline'}
                 className="cursor-pointer"
                 onClick={() => toggleStageFilter(stage)}
               >
@@ -643,27 +695,37 @@ export default function AgentLeads() {
         <div className="flex gap-2 self-start items-center">
           {canViewTeam && (
             <Button
-              variant={viewAllTeam ? 'default' : 'outline'}
+              variant={filters.assignment.scope === 'mine' ? 'outline' : 'default'}
               size="sm"
-              onClick={() => {
-                const next = !viewAllTeam;
-                setViewAllTeam(next);
-                if (typeof window !== 'undefined') window.localStorage.setItem('agenthub_view_all_leads', String(next));
-              }}
+              onClick={() =>
+                commitQuery(
+                  {
+                    ...queryState,
+                    filters: {
+                      ...filters,
+                      assignment:
+                        filters.assignment.scope === 'mine' ? { scope: 'team' } : { scope: 'mine' },
+                    },
+                  },
+                  { replace: false }
+                )}
             >
-              Ver {viewAllTeam ? 'mis leads' : 'leads del equipo'}
+              Ver {filters.assignment.scope === 'mine' ? 'leads del equipo' : 'mis leads'}
             </Button>
           )}
-          <Button variant="outline" size="icon" aria-label="Abrir filtros avanzados">
+          <Button variant="outline" size="icon" aria-label="Abrir filtros avanzados" onClick={() => setFiltersOpen(true)}>
             <Filter className="h-4 w-4" />
           </Button>
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'pipeline' | 'list')}>
+          <Tabs value={viewMode} onValueChange={(v) => commitQuery({ ...queryState, view: v as LeadsViewMode }, { replace: false })}>
             <TabsList>
               <TabsTrigger value="pipeline">
                 <LayoutGrid className="h-4 w-4" />
               </TabsTrigger>
               <TabsTrigger value="list">
                 <List className="h-4 w-4" />
+              </TabsTrigger>
+              <TabsTrigger value="crm">
+                <Table2 className="h-4 w-4" />
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -677,7 +739,7 @@ export default function AgentLeads() {
           </div>
         </div>
       )}
-      {canViewTeam && viewAllTeam && (
+      {canViewTeam && filters.assignment.scope === 'team' && (
         <div className="mb-2">
           <div className="flex items-center gap-2 rounded-md border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
             <Sparkles className="h-3 w-3" />
@@ -685,6 +747,87 @@ export default function AgentLeads() {
           </div>
         </div>
       )}
+      {canViewTeam && filters.assignment.scope === 'agent' && (
+        <div className="mb-2">
+          <div className="flex items-center gap-2 rounded-md border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            Estás viendo los leads asignados a {memberLookup[filters.assignment.agentId] || filters.assignment.agentId}.
+          </div>
+        </div>
+      )}
+
+      <AnimatePresence mode="popLayout">
+        {hasAdvancedFilters && (
+          <motion.div
+            key="advanced-filter-chips"
+            variants={staggerItem}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="flex flex-wrap items-center gap-2"
+            aria-label="Filtros activos"
+          >
+            {filters.stages !== 'all' &&
+              filters.stages.map((stage) => (
+                <Badge key={`stage:${stage}`} variant="secondary" className="gap-1">
+                  {stageConfig[stage].label}
+                  <button
+                    type="button"
+                    className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    aria-label={`Quitar filtro ${stageConfig[stage].label}`}
+                    onClick={() => toggleStageFilter(stage)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            {filters.timeframe !== 'all' && (
+              <Badge variant="secondary" className="gap-1">
+                Timeframe: {filters.timeframe.replace(' months', ' meses')}
+                <button
+                  type="button"
+                  className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  aria-label="Quitar filtro timeframe"
+                  onClick={() => commitQuery({ ...queryState, filters: { ...filters, timeframe: 'all' } }, { replace: false })}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {filters.preApproved !== 'all' && (
+              <Badge variant="secondary" className="gap-1">
+                Pre-aprobado: {filters.preApproved === 'yes' ? 'Sí' : 'No'}
+                <button
+                  type="button"
+                  className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  aria-label="Quitar filtro pre-aprobación"
+                  onClick={() => commitQuery({ ...queryState, filters: { ...filters, preApproved: 'all' } }, { replace: false })}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {filters.assignment.scope !== 'mine' && (
+              <Badge variant="secondary" className="gap-1">
+                {filters.assignment.scope === 'team'
+                  ? 'Equipo'
+                  : `Asignado a: ${memberLookup[filters.assignment.agentId] || filters.assignment.agentId}`}
+                <button
+                  type="button"
+                  className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  aria-label="Quitar filtro de asignación"
+                  onClick={() => commitQuery({ ...queryState, filters: { ...filters, assignment: { scope: 'mine' } } }, { replace: false })}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            <Button variant="ghost" size="sm" onClick={clearAdvancedFilters} className="h-7 px-2 text-xs">
+              Limpiar filtros
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Pipeline View */}
       {viewMode === 'pipeline' && (
@@ -705,6 +848,9 @@ export default function AgentLeads() {
                   unreadIds={unreadLeadIds}
                   memberLookup={memberLookup}
                   flash={assignmentFlash}
+                  acceptingId={acceptingId}
+                  onAccept={handleAcceptLead}
+                  getAcceptCost={(lead) => getCostForAction(lead.source === 'marketplace' ? 'lead_premium' : 'lead_basic')}
                 />
               ))}
             </div>
@@ -733,6 +879,20 @@ export default function AgentLeads() {
         </motion.div>
       )}
 
+      {/* CRM View */}
+      {viewMode === 'crm' && (
+        <motion.div variants={staggerItem}>
+          <LeadsCrmTable
+            leads={filteredLeads}
+            loading={isLoading}
+            error={leadsError}
+            memberLookup={memberLookup}
+            onOpenLead={(lead) => openLead(lead, 'crm')}
+            onTrack={(event, properties) => track(event, properties)}
+          />
+        </motion.div>
+      )}
+
       {/* List View */}
       {viewMode === 'list' && (
         <motion.div variants={staggerItem}>
@@ -742,7 +902,8 @@ export default function AgentLeads() {
                 {filteredLeads.map((lead) => (
                   <Link
                     key={lead.id}
-                    to={`/agents/leads/${lead.id}`}
+                    to={`/agents/lead/${lead.id}`}
+                    state={{ backTo }}
                     className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     role="listitem"
                   >
@@ -785,6 +946,20 @@ export default function AgentLeads() {
           </Card>
         </motion.div>
       )}
+      <LeadsFiltersSheet
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        filters={filters}
+        onApply={(nextFilters) => commitQuery({ ...queryState, filters: nextFilters }, { replace: false })}
+        onClear={() => {
+          const defaults = getDefaultLeadsQueryState();
+          commitQuery({ ...queryState, filters: defaults.filters }, { replace: false });
+        }}
+        canViewTeam={canViewTeam}
+        members={teamMembers}
+        resultsCount={filteredLeads.length}
+        onTrack={(event, properties) => track(event, properties)}
+      />
       <InsufficientCreditsDialog
         open={insufficientOpen}
         onClose={() => setInsufficientOpen(false)}

@@ -75,30 +75,14 @@ export default function AgentListingDetail() {
   const [openHouseTime, setOpenHouseTime] = useState('12:00');
   const [scheduling, setScheduling] = useState(false);
 
-  if (!listing) {
-    return (
-      <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />
-          Volver
-        </Button>
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            Propiedad no encontrada.
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const engagement = useMemo(
-    () => [
+  const engagement = useMemo(() => {
+    if (!listing) return [];
+    return [
       { label: 'Vistas', icon: Eye, value: listing.viewCount },
       { label: 'Guardados', icon: Heart, value: listing.saveCount },
       { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
-    ],
-    [listing]
-  );
+    ];
+  }, [listing]);
 
   const handleVerify = async () => {
     const rule = creditAccount?.rules.find((r) => r.action === 'verification_request');
@@ -251,6 +235,22 @@ export default function AgentListingDetail() {
       setActivityState('error');
     }
   }, [listing?.id]);
+
+  if (!listing) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Volver
+        </Button>
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Propiedad no encontrada.
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <>

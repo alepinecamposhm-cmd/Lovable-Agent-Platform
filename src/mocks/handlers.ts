@@ -1,15 +1,22 @@
 import { http, HttpResponse } from 'msw';
-import { mockLeads, mockContacts, mockCreditAccount, mockLedger, mockInvoices } from '@/lib/agents/fixtures';
+import { mockLeads, mockContacts, mockCreditAccount, mockLedger, mockInvoices, mockListings } from '@/lib/agents/fixtures';
 import { mergeContacts } from '@/lib/contacts/merge';
 import { addAuditEvent } from '@/lib/audit/store';
+import { getPaymentMethod } from '@/lib/credits/paymentMethods';
+import { formatLedgerDescription } from '@/lib/credits/ledgerDescription';
+import type { CreditAccount, CreditInvoice, CreditLedgerEntry, CreditRule } from '@/types/agents';
 
-const cloneAccount = () => ({ ...mockCreditAccount, createdAt: new Date(mockCreditAccount.createdAt), updatedAt: new Date(mockCreditAccount.updatedAt) });
-const cloneLedger = () => mockLedger.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
-const cloneInvoices = () => mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
+const cloneAccount = (): CreditAccount => ({
+  ...mockCreditAccount,
+  createdAt: new Date(mockCreditAccount.createdAt),
+  updatedAt: new Date(mockCreditAccount.updatedAt),
+});
+const cloneLedger = (): CreditLedgerEntry[] => mockLedger.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
+const cloneInvoices = (): CreditInvoice[] => mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
 
-let creditAccountLive = cloneAccount();
-let ledgerLive = cloneLedger();
-let invoicesLive = cloneInvoices();
+const creditAccountLive = cloneAccount();
+const ledgerLive = cloneLedger();
+const invoicesLive = cloneInvoices();
 
 const DEMO_MODE = true;
 
@@ -81,22 +88,22 @@ export const handlers = [
     return HttpResponse.json({ ok: true, rules: creditAccountLive.rules, dailyLimit: creditAccountLive.dailyLimit });
   }),
 
-  http.put('/api/credits/rules', async (req) => {
-    try {
-      const body = await req.request.json();
-      const { rules } = body;
-      if (!Array.isArray(rules)) return HttpResponse.json({ ok: false, error: 'invalid_rules' }, { status: 400 });
-      creditAccountLive.rules = rules.map((r: any, idx: number) => ({
-        id: r.id || `rule-${idx}`,
-        action: r.action,
-        cost: r.cost,
-        isEnabled: r.isEnabled,
-      }));
-      creditAccountLive.updatedAt = new Date();
-      return HttpResponse.json({ ok: true, rules: creditAccountLive.rules });
-    } catch {
-      return HttpResponse.status(500);
-    }
+	  http.put('/api/credits/rules', async (req) => {
+	    try {
+	      const body = await req.request.json();
+	      const { rules } = body;
+	      if (!Array.isArray(rules)) return HttpResponse.json({ ok: false, error: 'invalid_rules' }, { status: 400 });
+	      creditAccountLive.rules = (rules as Array<Partial<CreditRule>>).map((r, idx): CreditRule => ({
+	        id: r.id ?? `rule-${idx}`,
+	        action: r.action ?? 'lead_basic',
+	        cost: typeof r.cost === 'number' ? r.cost : 0,
+	        isEnabled: typeof r.isEnabled === 'boolean' ? r.isEnabled : true,
+	      }));
+	      creditAccountLive.updatedAt = new Date();
+	      return HttpResponse.json({ ok: true, rules: creditAccountLive.rules });
+	    } catch {
+	      return HttpResponse.status(500);
+	    }
   }),
 
   http.put('/api/credits/limits', async (req) => {
@@ -115,13 +122,15 @@ export const handlers = [
   http.post('/api/credits/purchase', async (req) => {
     try {
       const body = await req.request.json();
-      const { accountId, packageId, credits, price } = body;
+      const { accountId, packageId, credits, price, paymentMethodId } = body;
       if (!accountId || !credits || !price) {
         return HttpResponse.json({ ok: false, error: 'invalid_request' }, { status: 400 });
       }
       if (accountId !== creditAccountLive.id) {
         return HttpResponse.status(404);
       }
+
+      const method = getPaymentMethod(paymentMethodId);
 
       // Apply purchase
       creditAccountLive.balance += credits;
@@ -132,7 +141,11 @@ export const handlers = [
         type: 'credit' as const,
         amount: credits,
         balance: creditAccountLive.balance,
-        description: `Compra de créditos (${packageId || credits})`,
+        description: formatLedgerDescription({
+          action: 'purchase',
+          referenceType: 'recharge',
+          paymentMethodLast4: method.last4,
+        }),
         referenceType: 'recharge' as const,
         referenceId: packageId || 'custom',
         createdAt: new Date(),
@@ -142,18 +155,29 @@ export const handlers = [
       addAuditEvent({
         action: 'credit_purchase',
         actor: 'agent-1',
-        payload: { packageId, credits, price, transactionId: entry.id },
+        payload: { packageId, credits, price, transactionId: entry.id, paymentMethodId: method.id },
       });
 
       const receipt = {
-        id: `rcpt-${Date.now()}`,
+        id: `RCPT-${Date.now()}`,
         amount: price,
         credits,
         createdAt: entry.createdAt,
-        paymentMethod: 'card_4242',
+        paymentMethod: method.label,
+        paymentMethodId: method.id,
         accountId: creditAccountLive.id,
         currency: 'USD',
       };
+
+      // Also create invoice record for the purchase (used by Credits > Facturas).
+      invoicesLive.unshift({
+        id: receipt.id,
+        amount: price,
+        credits,
+        paymentMethod: method.label,
+        description: `Paquete ${credits} créditos`,
+        createdAt: entry.createdAt,
+      });
 
       return HttpResponse.json({ ok: true, account: creditAccountLive, transaction: entry, receipt });
     } catch (e) {
@@ -225,6 +249,30 @@ export const handlers = [
     });
   }),
 
+  // Invoice PDF download
+  http.get('/api/credits/invoices/:id/pdf', async ({ params }) => {
+    const invoice = invoicesLive.find((i) => i.id === params.id);
+    if (!invoice) return HttpResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
+    const { createInvoicePdf } = await import('@/lib/credits/pdf');
+    const pdfBytes = await createInvoicePdf({
+      id: invoice.id,
+      amount: invoice.amount,
+      credits: invoice.credits,
+      paymentMethod: invoice.paymentMethod,
+      description: invoice.description,
+      createdAt: invoice.createdAt,
+      currency: 'USD',
+    });
+
+    return new HttpResponse(pdfBytes, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="receipt-${invoice.id}.pdf"`,
+      },
+    });
+  }),
+
   // Ledger item detail
   http.get('/api/credits/ledger/:id', ({ params }) => {
     const entry = ledgerLive.find((e) => e.id === params.id);
@@ -279,12 +327,12 @@ export const handlers = [
         if (idx >= 0) mockContacts.splice(idx, 1);
       }
 
-      const masterIdx = mockContacts.findIndex((c) => c.id === masterId);
-      if (masterIdx >= 0) {
-        mockContacts[masterIdx] = merged as any;
-      } else {
-        mockContacts.push(merged as any);
-      }
+	      const masterIdx = mockContacts.findIndex((c) => c.id === masterId);
+	      if (masterIdx >= 0) {
+	        mockContacts[masterIdx] = merged;
+	      } else {
+	        mockContacts.push(merged);
+	      }
 
       // record audit event
       addAuditEvent({ action: 'contact_merged', actor: 'agent-1', payload: { masterId, mergedIds, mergedId: merged.id } });
@@ -296,8 +344,8 @@ export const handlers = [
   }),
 
   // Credits consume (idempotent + rules + daily limit)
-  (() => {
-    const idempotencyStore: Record<string, any> = {};
+	  (() => {
+	    const idempotencyStore: Record<string, CreditLedgerEntry> = {};
 
     return http.post('/api/credits/consume', async (req) => {
       try {
@@ -332,7 +380,22 @@ export const handlers = [
         if (account.balance < cost) return HttpResponse.json({ ok: false, error: 'insufficient_balance' }, 402);
 
         // apply consumption
-        const { entry } = (await import('@/lib/credits/consume')).consumeCredits(account as any, ledgerLive as any, cost, { action, referenceType, referenceId, idempotencyKey });
+        const lead = referenceType === 'lead' ? mockLeads.find((l) => l.id === referenceId) : undefined;
+        const listing = referenceType === 'listing' ? mockListings.find((l) => l.id === referenceId) : undefined;
+        const description = formatLedgerDescription({
+          action,
+          referenceType,
+          referenceId,
+          leadName: lead ? `${lead.firstName} ${lead.lastName || ''}`.trim() : undefined,
+          listingLabel: listing?.address?.street,
+        });
+
+	        const { entry } = (await import('@/lib/credits/consume')).consumeCredits(
+	          account,
+	          ledgerLive,
+	          cost,
+	          { action, referenceType, referenceId, idempotencyKey, description }
+	        );
 
         idempotencyStore[idempotencyKey] = entry;
 
@@ -340,19 +403,17 @@ export const handlers = [
         addAuditEvent({ action: 'credit_consumption', actor: 'agent-1', payload: { transactionId: entry.id, amount: cost, action, referenceId } });
 
         return HttpResponse.json({ ok: true, transaction: entry, account });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('credits consume error', e);
-        return HttpResponse.status(500);
-      }
-    });
-  })(),
+	      } catch (e) {
+	        console.warn('credits consume error', e);
+	        return HttpResponse.status(500);
+	      }
+	    });
+	  })(),
 
   // Analytics endpoint (mock)
-  http.post('/api/analytics', async (req) => {
-    const payload = await req.request.json();
-    // eslint-disable-next-line no-console
-    console.log('[msw] analytics event', payload);
-    return HttpResponse.json({ ok: true });
-  }),
+	  http.post('/api/analytics', async (req) => {
+	    const payload = await req.request.json();
+	    console.log('[msw] analytics event', payload);
+	    return HttpResponse.json({ ok: true });
+	  }),
 ];

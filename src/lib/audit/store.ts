@@ -2,7 +2,7 @@ export interface AuditEvent {
   id: string;
   action: string;
   actor?: string;
-  payload?: Record<string, any>;
+  payload?: Record<string, unknown>;
   createdAt: string;
   domain?: 'team' | 'auth' | 'system';
 }

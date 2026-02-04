@@ -1,7 +1,8 @@
 import { test, expect } from 'vitest';
 import { mergeContacts } from './merge';
+import type { Contact } from '@/types/agents';
 
-const a = {
+const a: Contact = {
   id: 'a',
   firstName: 'John',
   emails: ['john@example.com'],
@@ -11,7 +12,7 @@ const a = {
   createdAt: new Date('2026-01-01'),
   updatedAt: new Date('2026-01-01'),
 };
-const b = {
+const b: Contact = {
   id: 'b',
   firstName: 'Johnny',
   emails: ['johnny@example.com', 'john@example.com'],
@@ -23,7 +24,7 @@ const b = {
 };
 
 test('mergeContacts merges emails, phones and linked leads and notes', () => {
-  const merged = mergeContacts(a as any, [b as any]);
+  const merged = mergeContacts(a, [b]);
   expect(merged.emails).toContain('john@example.com');
   expect(merged.emails).toContain('johnny@example.com');
   expect(merged.phones).toContain('+1');

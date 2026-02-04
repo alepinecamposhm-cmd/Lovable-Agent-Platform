@@ -6,8 +6,13 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { usePurchaseCredits, useSendReceiptEmail } from '@/lib/credits/query';
+import { fetchInvoicePdf, usePurchaseCredits, useSendReceiptEmail } from '@/lib/credits/query';
 import { format } from 'date-fns';
+import { downloadBlob } from '@/lib/credits/download';
+import { PAYMENT_METHODS, type PaymentMethodId, getPaymentMethod } from '@/lib/credits/paymentMethods';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useNavigate } from 'react-router-dom';
+import { getCurrentUser } from '@/lib/agents/team/store';
 
 interface CreditPackage {
   id: string;
@@ -33,6 +38,9 @@ const packages: CreditPackage[] = [
 interface BuyCreditsDialogProps {
   accountId?: string;
   trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
 }
 
 const track = (event: string, properties?: Record<string, unknown>) => {
@@ -42,32 +50,62 @@ const track = (event: string, properties?: Record<string, unknown>) => {
   }).catch(() => {});
 };
 
-export function BuyCreditsDialog({ accountId = 'credit-1', trigger }: BuyCreditsDialogProps) {
-  const [open, setOpen] = useState(false);
+export function BuyCreditsDialog({
+  accountId = 'credit-1',
+  trigger,
+  open: openProp,
+  onOpenChange,
+  showTrigger = true,
+}: BuyCreditsDialogProps) {
+  const navigate = useNavigate();
+  const [openUncontrolled, setOpenUncontrolled] = useState(false);
+  const open = openProp ?? openUncontrolled;
+  const setOpen = onOpenChange ?? setOpenUncontrolled;
   const [selected, setSelected] = useState<string>('pro');
   const [receipt, setReceipt] = useState<ReceiptInfo | null>(null);
+  const [paymentMethodId, setPaymentMethodId] = useState<PaymentMethodId>('card_4242');
 
   const { mutateAsync, isPending } = usePurchaseCredits();
   const { mutateAsync: sendReceiptEmail, isPending: emailSending } = useSendReceiptEmail();
 
   const pkgSelected = useMemo(() => packages.find(p => p.id === selected), [selected]);
+  const paymentMethod = useMemo(() => getPaymentMethod(paymentMethodId), [paymentMethodId]);
 
   const handlePurchase = async () => {
     if (!pkgSelected) return;
-    track('credits_purchase_start', { packageId: pkgSelected.id, credits: pkgSelected.credits, price: pkgSelected.price });
+    track('credits_purchase_start', { packageId: pkgSelected.id, credits: pkgSelected.credits, price: pkgSelected.price, paymentMethodId });
     try {
       const result = await mutateAsync({
         accountId,
         packageId: pkgSelected.id,
         credits: pkgSelected.credits,
         price: pkgSelected.price,
+        paymentMethodId,
       });
       setReceipt(result.receipt);
-      toast.success(`Has comprado ${pkgSelected.credits} créditos`, {
-        description: 'Tu saldo ha sido actualizado.',
+      toast.success('Compra realizada. Recibo generado.', {
+        description: `+${pkgSelected.credits} créditos · ${paymentMethod.label}`,
+        action: {
+          label: 'Ver en Facturas',
+          onClick: () => {
+            setOpen(false);
+            navigate('/agents/credits?tab=invoices');
+          },
+        },
       });
-      track('credits_purchase_complete', { packageId: pkgSelected.id, credits: pkgSelected.credits, price: pkgSelected.price });
+      track('credits_purchase_complete', { packageId: pkgSelected.id, credits: pkgSelected.credits, price: pkgSelected.price, paymentMethodId });
       track('credits_purchase_receipt_view', { receiptId: result.receipt.id, amount: result.receipt.amount });
+
+      const email = getCurrentUser().email || 'agent@example.com';
+      track('credits_receipt_email_auto_attempt', { receiptId: result.receipt.id, email });
+      sendReceiptEmail({ receiptId: result.receipt.id, email })
+        .then(() => {
+          track('credits_receipt_email_auto_result', { receiptId: result.receipt.id, ok: true });
+        })
+        .catch(() => {
+          toast.error('No se pudo enviar el recibo (puedes reintentar)');
+          track('credits_receipt_email_auto_result', { receiptId: result.receipt.id, ok: false });
+        });
     } catch (e) {
       toast.error('No se pudo procesar el pago, intenta otra tarjeta.');
       track('credits_purchase_error', { packageId: pkgSelected?.id, message: String(e) });
@@ -76,9 +114,11 @@ export function BuyCreditsDialog({ accountId = 'credit-1', trigger }: BuyCredits
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || <Button>Comprar Créditos</Button>}
-      </DialogTrigger>
+      {showTrigger ? (
+        <DialogTrigger asChild>
+          {trigger || <Button>Comprar Créditos</Button>}
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Recargar Créditos</DialogTitle>
@@ -123,9 +163,29 @@ export function BuyCreditsDialog({ accountId = 'credit-1', trigger }: BuyCredits
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium">Método de pago</p>
-              <p className="text-xs text-muted-foreground">Visa terminada en 4242</p>
+              <p className="text-xs text-muted-foreground">{paymentMethod.label}</p>
             </div>
-            <Button variant="ghost" size="sm" className="text-xs h-7">Cambiar</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-xs h-7" disabled={isPending}>
+                  Cambiar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {PAYMENT_METHODS.map((m) => (
+                  <DropdownMenuItem
+                    key={m.id}
+                    onSelect={() => {
+                      const prev = paymentMethodId;
+                      setPaymentMethodId(m.id);
+                      track('credits_payment_method_change', { from: prev, to: m.id });
+                    }}
+                  >
+                    {m.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {receipt && (
@@ -133,7 +193,7 @@ export function BuyCreditsDialog({ accountId = 'credit-1', trigger }: BuyCredits
               <Receipt className="h-4 w-4 text-primary mt-1" />
               <div className="text-sm space-y-1">
                 <p className="font-medium">Recibo #{receipt.id}</p>
-                <p className="text-muted-foreground">Pago ${receipt.amount} · {receipt.credits} créditos · {receipt.paymentMethod || 'Visa 4242'}</p>
+                <p className="text-muted-foreground">Pago ${receipt.amount} · {receipt.credits} créditos · {receipt.paymentMethod || paymentMethod.label}</p>
                 <p className="text-muted-foreground text-xs">
                   {receipt.createdAt ? format(new Date(receipt.createdAt), 'd MMM y, HH:mm') : ''}
                 </p>
@@ -142,20 +202,18 @@ export function BuyCreditsDialog({ accountId = 'credit-1', trigger }: BuyCredits
                     variant="secondary"
                     size="sm"
                     className="text-xs"
-                    onClick={() => {
-                      const blob = new Blob(
-                        [`Recibo ${receipt.id}\nCréditos: ${receipt.credits}\nMonto: $${receipt.amount}\nMétodo: ${receipt.paymentMethod}\nFecha: ${new Date(receipt.createdAt || new Date()).toLocaleString()}`],
-                        { type: 'text/plain' }
-                      );
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `recibo-${receipt.id}.txt`;
-                      a.click();
+                    onClick={async () => {
+                      try {
+                        const blob = await fetchInvoicePdf(receipt.id);
+                        downloadBlob(blob, `recibo-${receipt.id}.pdf`);
+                        track('credits_invoice_pdf_download', { receiptId: receipt.id, source: 'purchase_receipt_card' });
+                      } catch (err) {
+                        toast.error('No se pudo descargar el PDF');
+                      }
                     }}
                   >
                     <Share className="h-3.5 w-3.5 mr-1" />
-                    Descargar
+                    Descargar PDF
                   </Button>
                   <Button
                     variant="ghost"
@@ -164,9 +222,10 @@ export function BuyCreditsDialog({ accountId = 'credit-1', trigger }: BuyCredits
                     className="text-xs"
                     onClick={async () => {
                       try {
-                        await sendReceiptEmail({ receiptId: receipt.id, email: 'agent@example.com' });
+                        const email = getCurrentUser().email || 'agent@example.com';
+                        await sendReceiptEmail({ receiptId: receipt.id, email });
                         toast.success('Recibo enviado por email');
-                        track('credits_receipt_email_sent', { receiptId: receipt.id });
+                        track('credits_receipt_email_manual', { receiptId: receipt.id });
                       } catch (err) {
                         toast.error('No se pudo enviar el recibo');
                       }

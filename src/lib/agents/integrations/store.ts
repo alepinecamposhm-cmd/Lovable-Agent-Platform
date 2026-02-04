@@ -17,7 +17,9 @@ const defaults: IntegrationState[] = [
   { id: 'showingtime', name: 'ShowingTime', description: 'Sincroniza citas y disponibilidad.', status: 'disconnected' },
 ];
 
-function hydrate(raw: any): IntegrationState {
+type StoredIntegrationState = Omit<IntegrationState, 'lastSyncedAt'> & { lastSyncedAt?: string };
+
+function hydrate(raw: StoredIntegrationState): IntegrationState {
   return { ...raw, lastSyncedAt: raw.lastSyncedAt ? new Date(raw.lastSyncedAt) : undefined };
 }
 
@@ -26,7 +28,8 @@ function load(): IntegrationState[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return defaults;
   try {
-    return JSON.parse(raw).map(hydrate);
+    const parsed = JSON.parse(raw) as StoredIntegrationState[];
+    return parsed.map(hydrate);
   } catch (e) {
     return defaults;
   }

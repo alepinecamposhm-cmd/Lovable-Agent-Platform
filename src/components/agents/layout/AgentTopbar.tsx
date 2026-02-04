@@ -7,16 +7,17 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import {
   markAllRead,
   markRead,
+  list as listNotifications,
   useNotificationStore,
   isQuietHoursNow,
 } from '@/lib/agents/notifications/store';
@@ -24,6 +25,8 @@ import { useTaskStore } from '@/lib/agents/tasks/store';
 import { useNavigate } from 'react-router-dom';
 import { useCreditAccount } from '@/lib/credits/query';
 import { cn as cnUtil } from '@/lib/utils';
+import { triggerCreditLow } from '@/lib/agents/notifications/triggers';
+import { useAnimatedNumber } from '@/lib/credits/useAnimatedNumber';
 
 interface AgentTopbarProps {
   onOpenCommand: () => void;
@@ -35,7 +38,19 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
   const { notifications, unread, quietHours } = useNotificationStore();
   const { pending: pendingTasks } = useTaskStore();
   const { data: creditAccount, isLoading: creditLoading, isError: creditError } = useCreditAccount();
-  const lowBalance = creditAccount ? creditAccount.balance <= creditAccount.lowBalanceThreshold : false;
+  const creditBalance = creditAccount?.balance;
+  const creditThreshold = creditAccount?.lowBalanceThreshold;
+  const lowBalance =
+    typeof creditBalance === 'number' && typeof creditThreshold === 'number'
+      ? creditBalance <= creditThreshold
+      : false;
+  const prevBalanceRef = useRef<number | null>(null);
+  const prevBalanceAnimRef = useRef<number | null>(null);
+  const reduceMotion = useReducedMotion();
+  const animatedCreditBalance = useAnimatedNumber(
+    creditError || creditLoading ? undefined : creditBalance,
+    { durationMs: 650 }
+  );
   const quietLabel = useMemo(() => {
     if (!quietHours.enabled) return 'Notificaciones activas';
     return `Silenciado ${quietHours.start}–${quietHours.end}`;
@@ -47,6 +62,69 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
       body: JSON.stringify({ event, properties }),
     }).catch(() => {});
   };
+
+  useEffect(() => {
+    if (typeof creditBalance !== 'number' || creditError) return;
+    const next = creditBalance;
+    const prev = prevBalanceAnimRef.current;
+    prevBalanceAnimRef.current = next;
+    if (prev != null && prev !== next && !reduceMotion) {
+      track('credits_balance_animated', { from: prev, to: next, source: 'topbar' });
+    }
+  }, [creditBalance, creditError, reduceMotion]);
+
+  useEffect(() => {
+    if (typeof creditBalance !== 'number' || typeof creditThreshold !== 'number' || creditError) return;
+    const balance = creditBalance;
+    const threshold = creditThreshold;
+    const prevBalance = prevBalanceRef.current;
+    prevBalanceRef.current = balance;
+
+    if (balance > threshold) return;
+
+    const STORAGE_KEY = 'agenthub_credit_low_last_notified';
+    const now = Date.now();
+    let last: { at: string; balance: number; threshold: number } | null = null;
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) last = JSON.parse(raw);
+    } catch {
+      last = null;
+    }
+
+    const within24h = last?.at ? now - new Date(last.at).getTime() < 24 * 60 * 60 * 1000 : false;
+    const alreadyNotifiedSame =
+      within24h &&
+      typeof last?.balance === 'number' &&
+      typeof last?.threshold === 'number' &&
+      last.balance === balance &&
+      last.threshold === threshold;
+
+    if (alreadyNotifiedSame) {
+      track('credits_low_balance_deduped', { balance, threshold });
+      return;
+    }
+
+    const crossed = prevBalance != null && prevBalance > threshold;
+    const firstKnownLow = prevBalance == null;
+    const lowerThanLast = typeof last?.balance === 'number' ? balance < last.balance : false;
+    const shouldNotify = crossed || firstKnownLow || lowerThanLast || !within24h;
+
+    if (!shouldNotify) return;
+
+    triggerCreditLow(balance);
+    const created = listNotifications()[0];
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ at: new Date().toISOString(), balance, threshold })
+      );
+    } catch {
+      // ignore storage errors (e.g. private mode)
+    }
+    track('credits_low_balance_triggered', { balance, threshold, source: 'account_fetch' });
+    track('credits_low_balance_notification_created', { notificationId: created?.id, balance });
+  }, [creditBalance, creditThreshold, creditError]);
 
   useHotkeys(['mod+k', 'k'], (e) => {
     e.preventDefault();
@@ -88,7 +166,7 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                 onClick={() => navigate('/agents/credits')}
               >
                 <CreditCard className="h-4 w-4" />
-                {creditLoading ? '—' : creditError ? 'Error' : `${creditAccount?.balance ?? '—'}`}
+                {creditLoading ? '—' : creditError ? 'Error' : `${animatedCreditBalance ?? creditAccount?.balance ?? '—'}`}
                 <span className="text-xs text-muted-foreground">cr</span>
                 <span className="text-xs text-muted-foreground">
                   · ${creditAccount?.currencyRate ? (creditAccount.balance * (creditAccount.currencyRate || 1)).toFixed(0) : '--'}
@@ -202,6 +280,9 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                     role="listitem"
                     onClick={() => {
                       markRead(notification.id);
+                      if (notification.type === 'credit') {
+                        track('credits_low_balance_notification_clicked', { notificationId: notification.id });
+                      }
                       if (notification.actionUrl) navigate(notification.actionUrl);
                     }}
                   >

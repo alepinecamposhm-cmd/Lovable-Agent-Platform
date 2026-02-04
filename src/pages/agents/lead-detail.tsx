@@ -96,7 +96,8 @@ export default function AgentLeadDetail() {
   const { leads } = useLeadStore();
   const { tasks } = useTaskStore();
   const { members } = useTeamStore();
-  const lead = leads.find((l) => l.id === params.leadId);
+  const leadId = params.leadId ?? '';
+  const lead = leads.find((l) => l.id === leadId);
   const [stage, setStage] = useState<LeadStage>(lead?.stage ?? 'new');
   const [noteDraft, setNoteDraft] = useState(lead?.notes || '');
   const [taskDraft, setTaskDraft] = useState('');
@@ -105,15 +106,33 @@ export default function AgentLeadDetail() {
   const [isAssigning, setIsAssigning] = useState(false);
   const currentUser = getCurrentUser();
 
+  const leadStage = lead?.stage;
   useEffect(() => {
-    if (lead) setStage(lead.stage);
-  }, [lead?.stage]);
+    if (leadStage) setStage(leadStage);
+  }, [leadStage]);
 
+  const leadNotes = lead?.notes;
   useEffect(() => {
-    if (lead) {
-      setNoteDraft(lead.notes || '');
-    }
-  }, [lead?.id]);
+    setNoteDraft(leadNotes || '');
+  }, [leadNotes]);
+
+  const activities = useMemo(
+    () =>
+      mockLeadActivities
+        .filter((a) => a.leadId === leadId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    [leadId]
+  );
+
+  const leadTasks = useMemo(
+    () => tasks.filter((t) => t.leadId === leadId),
+    [tasks, leadId]
+  );
+
+  const leadAppointments = useMemo(
+    () => mockAppointments.filter((apt) => apt.leadId === leadId),
+    [leadId]
+  );
 
   if (!lead) {
     return (
@@ -130,24 +149,6 @@ export default function AgentLeadDetail() {
       </div>
     );
   }
-
-  const activities = useMemo(
-    () =>
-      mockLeadActivities
-        .filter((a) => a.leadId === lead.id)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-    [lead.id]
-  );
-
-  const leadTasks = useMemo(
-    () => tasks.filter((t) => t.leadId === lead.id),
-    [tasks, lead.id]
-  );
-
-  const leadAppointments = useMemo(
-    () => mockAppointments.filter((apt) => apt.leadId === lead.id),
-    [lead.id]
-  );
 
   const canManageAssignments = currentUser.role === 'owner' || currentUser.role === 'admin';
 

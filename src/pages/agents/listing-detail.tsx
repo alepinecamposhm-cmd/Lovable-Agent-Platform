@@ -34,7 +34,7 @@ import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { useConsumeCredits, useCreditAccount } from '@/lib/credits/query';
 import { InsufficientCreditsDialog } from '@/components/agents/credits/InsufficientCreditsDialog';
-import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
+import type { Lead, Listing, ListingStatus, VerificationStatus } from '@/types/agents';
 
 const statusConfig: Record<ListingStatus, { label: string; color: string; pill: string }> = {
   draft: { label: 'Borrador', color: 'text-muted-foreground', pill: 'bg-muted text-muted-foreground' },
@@ -57,7 +57,8 @@ export default function AgentListingDetail() {
   const params = useParams();
   const navigate = useNavigate();
   const { listings } = useListingStore();
-  const listing = listings.find((l) => l.id === params.listingId);
+  const listingId = params.listingId ?? '';
+  const listing = listings.find((l) => l.id === listingId);
   const [status, setStatus] = useState<ListingStatus>(listing?.status ?? 'draft');
   const [verification, setVerification] = useState<VerificationStatus>(listing?.verificationStatus ?? 'none');
   const isFeatured = listing?.featuredUntil && listing.featuredUntil > new Date();
@@ -75,6 +76,38 @@ export default function AgentListingDetail() {
   const [openHouseTime, setOpenHouseTime] = useState('12:00');
   const [scheduling, setScheduling] = useState(false);
 
+  const engagement = useMemo(
+    () =>
+      listing
+        ? [
+            { label: 'Vistas', icon: Eye, value: listing.viewCount },
+            { label: 'Guardados', icon: Heart, value: listing.saveCount },
+            { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
+          ]
+        : [],
+    [listing?.id, listing?.viewCount, listing?.saveCount, listing?.inquiryCount]
+  );
+
+  const listingKey = listing?.id;
+  useEffect(() => {
+    try {
+      if (!listingKey) {
+        setActivityFeed([]);
+        setActivityState('empty');
+        return;
+      }
+      const events = listListingActivities(listingKey);
+      if (!events.length) {
+        setActivityState('empty');
+      } else {
+        setActivityFeed(events);
+        setActivityState('success');
+      }
+    } catch (e) {
+      setActivityState('error');
+    }
+  }, [listingKey]);
+
   if (!listing) {
     return (
       <div className="space-y-4">
@@ -91,15 +124,6 @@ export default function AgentListingDetail() {
     );
   }
 
-  const engagement = useMemo(
-    () => [
-      { label: 'Vistas', icon: Eye, value: listing.viewCount },
-      { label: 'Guardados', icon: Heart, value: listing.saveCount },
-      { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
-    ],
-    [listing]
-  );
-
   const handleVerify = async () => {
     const rule = creditAccount?.rules.find((r) => r.action === 'verification_request');
     const cost = rule?.cost ?? 15;
@@ -113,7 +137,7 @@ export default function AgentListingDetail() {
         amount: cost,
         action: 'verification_request',
         referenceType: 'listing',
-        referenceId: listing?.id,
+        referenceId: listing.id,
       });
       setVerification('pending');
       toast({
@@ -123,8 +147,8 @@ export default function AgentListingDetail() {
       addNotification({
         type: 'listing',
         title: 'Verificación en curso',
-        body: `${listing?.address.street}`,
-        actionUrl: listing ? `/agents/listings/${listing.id}` : undefined,
+        body: listing.address.street,
+        actionUrl: `/agents/listings/${listing.id}`,
         createdAt: new Date(),
         status: 'unread',
       });
@@ -155,35 +179,35 @@ export default function AgentListingDetail() {
   const boost24Cost = creditAccount?.rules.find((r) => r.action === 'boost_24h')?.cost ?? 10;
   const boost7Cost = creditAccount?.rules.find((r) => r.action === 'boost_7d')?.cost ?? 50;
 
-  const scheduleOpenHouse = () => {
-    if (!listing) return;
-    setScheduling(true);
-    try {
-      const [hours, minutes] = openHouseTime.split(':').map(Number);
-      const date = new Date(openHouseDate);
-      date.setHours(hours || 12, minutes || 0, 0, 0);
-      const pseudoLead = {
-        id: `open-house-${listing.id}`,
-        firstName: 'Open House',
-        lastName: listing.address.street,
-        stage: 'appointment_set' as const,
-        temperature: 'warm' as const,
-        assignedTo: listing.agentId,
-        source: 'manual' as const,
-        interestedIn: 'buy' as const,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      const apt = addAppointment({
-        scheduledAt: date,
-        duration: 90,
-        leadId: pseudoLead.id,
-        lead: pseudoLead as any,
-        agentId: listing.agentId,
-        listingId: listing.id,
-        listing,
-        type: 'open_house',
-        status: 'pending',
+	  const scheduleOpenHouse = () => {
+	    if (!listing) return;
+	    setScheduling(true);
+	    try {
+	      const [hours, minutes] = openHouseTime.split(':').map(Number);
+	      const date = new Date(openHouseDate);
+	      date.setHours(hours || 12, minutes || 0, 0, 0);
+	      const pseudoLead: Lead = {
+	        id: `open-house-${listing.id}`,
+	        firstName: 'Open House',
+	        lastName: listing.address.street,
+	        stage: 'appointment_set' as const,
+	        temperature: 'warm' as const,
+	        assignedTo: listing.agentId,
+	        source: 'manual' as const,
+	        interestedIn: 'buy' as const,
+	        createdAt: new Date(),
+	        updatedAt: new Date(),
+	      };
+	      const apt = addAppointment({
+	        scheduledAt: date,
+	        duration: 90,
+	        leadId: pseudoLead.id,
+	        lead: pseudoLead,
+	        agentId: listing.agentId,
+	        listingId: listing.id,
+	        listing,
+	        type: 'open_house',
+	        status: 'pending',
         location: listing.address.street,
         notes: 'Open house auto-creado desde listing',
       });
@@ -200,7 +224,7 @@ export default function AgentListingDetail() {
       setScheduling(false);
       toast({ title: 'Error', description: 'No se pudo crear el open house', variant: 'destructive' });
     }
-  };
+	  };
 
   const handleShowingTime = () => {
     if (!listing) return;
@@ -234,26 +258,8 @@ export default function AgentListingDetail() {
     window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_start', integration: 'showingtime', listingId: listing.id } }));
   };
 
-  useEffect(() => {
-    try {
-      if (!listing) {
-        setActivityState('empty');
-        return;
-      }
-      const events = listListingActivities(listing.id);
-      if (!events.length) {
-        setActivityState('empty');
-      } else {
-        setActivityFeed(events);
-        setActivityState('success');
-      }
-    } catch (e) {
-      setActivityState('error');
-    }
-  }, [listing?.id]);
-
-  return (
-    <>
+	  return (
+	    <>
     <motion.div
       variants={staggerContainer}
       initial="hidden"
@@ -576,9 +582,9 @@ export default function AgentListingDetail() {
     open={blockModal.open}
     variant={blockModal.variant}
     onClose={() => setBlockModal({ ...blockModal, open: false })}
-    onRecharge={() => window.location.assign('/agents/credits')}
-    meta={blockModal.meta}
-  />
+	    onRecharge={() => window.location.assign('/agents/credits?purchase=1')}
+	    meta={blockModal.meta}
+	  />
     </>
   );
 }

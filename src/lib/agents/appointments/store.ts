@@ -6,12 +6,19 @@ import type { Appointment, AppointmentStatus } from '@/types/agents';
 const STORAGE_KEY = 'agenthub_appointments';
 const listeners = new Set<() => void>();
 
+type StoredAppointment = Omit<Appointment, 'scheduledAt' | 'createdAt' | 'updatedAt'> & {
+  scheduledAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 function load(): Appointment[] {
   if (typeof window === 'undefined') return mockAppointments;
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockAppointments;
   try {
-    return JSON.parse(raw).map((apt: any) => ({
+    const parsed = JSON.parse(raw) as StoredAppointment[];
+    return parsed.map((apt) => ({
       ...apt,
       scheduledAt: apt.scheduledAt ? parseISO(apt.scheduledAt) : new Date(),
       createdAt: apt.createdAt ? parseISO(apt.createdAt) : new Date(),

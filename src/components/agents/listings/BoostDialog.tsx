@@ -112,7 +112,7 @@ export function BoostDialog({ listingId, cost, options = DEFAULT_OPTIONS }: Boos
         open={showInsufficient}
         onClose={() => setShowInsufficient(false)}
         onRecharge={() => {
-          window.location.assign('/agents/credits');
+          window.location.assign('/agents/credits?purchase=1');
         }}
         variant={insufficientVariant}
       />

@@ -790,7 +790,7 @@ export default function AgentLeads() {
         onClose={() => setInsufficientOpen(false)}
         onRecharge={() => {
           setInsufficientOpen(false);
-          window.location.assign('/agents/credits');
+          window.location.assign('/agents/credits?purchase=1');
         }}
         variant={insufficientVariant}
         meta={insufficientMeta}

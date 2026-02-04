@@ -298,7 +298,8 @@ function PerformanceCard() {
       answerRate: l.acceptedAt ? 100 : 60,
     }));
 
-  const exportCsv = (rowsToExport: any[], filename: string) => {
+  type CsvRow = Record<string, string | number | boolean | null | undefined>;
+  const exportCsv = (rowsToExport: CsvRow[], filename: string) => {
     if (!rowsToExport.length) {
       toast({ title: 'Sin datos para exportar', variant: 'destructive' });
       return;
@@ -324,7 +325,12 @@ function PerformanceCard() {
         <div className="flex gap-2 items-center">
           <Button size="sm" variant={range === '7d' ? 'default' : 'outline'} onClick={() => setRange('7d')}>7d</Button>
           <Button size="sm" variant={range === '30d' ? 'default' : 'outline'} onClick={() => setRange('30d')}>30d</Button>
-          <Tabs value={view} onValueChange={(v) => setView(v as any)}>
+          <Tabs
+            value={view}
+            onValueChange={(v) => {
+              if (v === 'kpi' || v === 'report') setView(v);
+            }}
+          >
             <TabsList>
               <TabsTrigger value="kpi">KPIs</TabsTrigger>
               <TabsTrigger value="report">Lead Report</TabsTrigger>
@@ -376,7 +382,10 @@ function PerformanceCard() {
                     <select
                       className="text-sm rounded-md border px-2 py-1"
                       value={filterMode}
-                      onChange={(e) => setFilterMode(e.target.value as any)}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === 'all' || next === 'zone' || next === 'type') setFilterMode(next);
+                      }}
                     >
                       <option value="zone">Por zona</option>
                       <option value="type">Por tipo</option>
@@ -611,7 +620,14 @@ function AuditCard({ filter, onFilter, dateRange, onDateRange }: { filter: strin
             <option value="ownership">Liderazgo</option>
             <option value="bulk_reassign">Reasignaciones</option>
           </select>
-          <select className="border rounded-md px-2 py-2 text-sm" value={dateRange} onChange={(e) => onDateRange(e.target.value as any)}>
+          <select
+            className="border rounded-md px-2 py-2 text-sm"
+            value={dateRange}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === 'all' || next === '7d' || next === '30d') onDateRange(next);
+            }}
+          >
             <option value="all">Todo tiempo</option>
             <option value="7d">Últimos 7d</option>
             <option value="30d">Últimos 30d</option>
@@ -933,7 +949,14 @@ export default function AgentTeam() {
           <p className="text-muted-foreground">Miembros, ruteo, performance y auditoría en una vista.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="default" size="sm" onClick={() => { scrollToSection('members'); document.querySelector('input[placeholder=\"email@equipo.com\"]')?.focus(); }}>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => {
+              scrollToSection('members');
+              document.querySelector('input[placeholder="email@equipo.com"]')?.focus();
+            }}
+          >
             <Users2 className="h-4 w-4 mr-1" /> Invitar
           </Button>
           <Button variant="outline" size="sm" onClick={() => { setWizardOpen(true); setWizardStep(1); scrollToSection('routing'); }}>
@@ -1009,7 +1032,18 @@ export default function AgentTeam() {
                   <select
                     className="text-sm rounded-md border px-2 py-1"
                     value={member.role}
-                    onChange={(e) => handleRoleChange(member.id, e.target.value as any)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (
+                        next === 'owner' ||
+                        next === 'admin' ||
+                        next === 'broker' ||
+                        next === 'agent' ||
+                        next === 'assistant'
+                      ) {
+                        handleRoleChange(member.id, next);
+                      }
+                    }}
                   >
                     <option value="owner">Owner</option>
                     <option value="admin">Admin</option>

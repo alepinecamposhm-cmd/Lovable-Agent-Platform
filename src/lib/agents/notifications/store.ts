@@ -79,16 +79,18 @@ const seed: Notification[] = [
   },
 ];
 
+type StoredNotification = Omit<Notification, 'createdAt'> & { createdAt?: string };
+
 function load(): Notification[] {
   if (typeof window === 'undefined') return seed;
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return seed;
   try {
-    const parsed: Notification[] = JSON.parse(raw).map((n: any) => ({
+    const parsed = JSON.parse(raw) as StoredNotification[];
+    return parsed.map((n) => ({
       ...n,
       createdAt: n.createdAt ? parseISO(n.createdAt) : new Date(),
     }));
-    return parsed;
   } catch (e) {
     console.error('Failed to parse notifications', e);
     return seed;
@@ -200,11 +202,18 @@ export function isQuietHoursNow(date = new Date()): boolean {
 }
 
 // Cache to prevent infinite re-renders (useSyncExternalStore needs stable object references)
-let cachedSnapshot: {
+type NotificationStoreSnapshot = {
   notifications: Notification[];
   unread: number;
   quietHours: QuietHoursState;
-} | null = null;
+};
+type NotificationStoreCachedSnapshot = {
+  snapshot: NotificationStoreSnapshot;
+  _rawNotifications: Notification[];
+  _rawQuietHours: QuietHoursState;
+};
+
+let cachedSnapshot: NotificationStoreCachedSnapshot | null = null;
 
 function getSnapshot() {
   const newNotifications = list();
@@ -214,20 +223,22 @@ function getSnapshot() {
   // Only create new object if data actually changed (check raw module-level state)
   if (
     !cachedSnapshot ||
-    notifications !== (cachedSnapshot as any)._rawNotifications || // compare raw array reference
-    cachedSnapshot.unread !== newUnread ||
-    quietHours !== (cachedSnapshot as any)._rawQuietHours // compare raw object reference
+    notifications !== cachedSnapshot._rawNotifications || // compare raw array reference
+    cachedSnapshot.snapshot.unread !== newUnread ||
+    quietHours !== cachedSnapshot._rawQuietHours // compare raw object reference
   ) {
     cachedSnapshot = {
-      notifications: newNotifications,
-      unread: newUnread,
-      quietHours: newQuietHours,
+      snapshot: {
+        notifications: newNotifications,
+        unread: newUnread,
+        quietHours: newQuietHours,
+      },
       _rawNotifications: notifications, // store raw references for comparison
       _rawQuietHours: quietHours,
-    } as any;
+    };
   }
 
-  return cachedSnapshot;
+  return cachedSnapshot.snapshot;
 }
 
 export function useNotificationStore(): {

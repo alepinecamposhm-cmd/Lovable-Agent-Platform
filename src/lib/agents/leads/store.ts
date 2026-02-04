@@ -6,12 +6,30 @@ import type { Lead, LeadStage } from '@/types/agents';
 const STORAGE_KEY = 'agenthub_leads';
 const listeners = new Set<() => void>();
 
+type StoredLead = Omit<
+  Lead,
+  | 'createdAt'
+  | 'updatedAt'
+  | 'lastContactedAt'
+  | 'lastActivityAt'
+  | 'nextFollowUpAt'
+  | 'closedAt'
+> & {
+  createdAt?: string;
+  updatedAt?: string;
+  lastContactedAt?: string;
+  lastActivityAt?: string;
+  nextFollowUpAt?: string;
+  closedAt?: string;
+};
+
 function load(): Lead[] {
   if (typeof window === 'undefined') return mockLeads;
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockLeads;
   try {
-    const parsed: Lead[] = JSON.parse(raw).map((lead: any) => ({
+    const parsed = JSON.parse(raw) as StoredLead[];
+    return parsed.map((lead) => ({
       ...lead,
       createdAt: lead.createdAt ? parseISO(lead.createdAt) : new Date(),
       updatedAt: lead.updatedAt ? parseISO(lead.updatedAt) : new Date(),
@@ -21,7 +39,6 @@ function load(): Lead[] {
       closedAt: lead.closedAt ? parseISO(lead.closedAt) : undefined,
       tags: lead.tags || [],
     }));
-    return parsed;
   } catch (e) {
     console.error('Failed to parse leads from storage', e);
     return mockLeads;

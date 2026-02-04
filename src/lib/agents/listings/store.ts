@@ -8,7 +8,21 @@ const ACTIVITIES_KEY = 'agenthub_listing_activities';
 
 const listeners = new Set<() => void>();
 
-function hydrateListing(raw: any): Listing {
+type StoredListing = Omit<
+  Listing,
+  'listedAt' | 'expiresAt' | 'featuredUntil' | 'soldAt' | 'createdAt' | 'updatedAt'
+> & {
+  listedAt?: string;
+  expiresAt?: string;
+  featuredUntil?: string;
+  soldAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type StoredListingActivityEvent = Omit<ListingActivityEvent, 'createdAt'> & { createdAt?: string };
+
+function hydrateListing(raw: StoredListing): Listing {
   return {
     ...raw,
     listedAt: raw.listedAt ? parseISO(raw.listedAt) : undefined,
@@ -17,14 +31,14 @@ function hydrateListing(raw: any): Listing {
     soldAt: raw.soldAt ? parseISO(raw.soldAt) : undefined,
     createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
     updatedAt: raw.updatedAt ? parseISO(raw.updatedAt) : new Date(),
-  } as Listing;
+  };
 }
 
-function hydrateActivity(raw: any): ListingActivityEvent {
+function hydrateActivity(raw: StoredListingActivityEvent): ListingActivityEvent {
   return {
     ...raw,
     createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-  } as ListingActivityEvent;
+  };
 }
 
 function loadListings(): Listing[] {
@@ -32,7 +46,8 @@ function loadListings(): Listing[] {
   const raw = window.localStorage.getItem(LISTINGS_KEY);
   if (!raw) return mockListings;
   try {
-    return JSON.parse(raw).map(hydrateListing);
+    const parsed = JSON.parse(raw) as StoredListing[];
+    return parsed.map(hydrateListing);
   } catch (e) {
     console.error('Failed to parse listings', e);
     return mockListings;
@@ -44,7 +59,8 @@ function loadActivities(): ListingActivityEvent[] {
   const raw = window.localStorage.getItem(ACTIVITIES_KEY);
   if (!raw) return mockListingActivities;
   try {
-    return JSON.parse(raw).map(hydrateActivity);
+    const parsed = JSON.parse(raw) as StoredListingActivityEvent[];
+    return parsed.map(hydrateActivity);
   } catch (e) {
     console.error('Failed to parse listing activities', e);
     return mockListingActivities;
@@ -159,18 +175,23 @@ export function listListingActivities(listingId: string) {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-let cachedSnapshot: { listings: Listing[]; activities: ListingActivityEvent[]; _rawL: Listing[]; _rawA: ListingActivityEvent[] } | null = null;
+type ListingStoreSnapshot = { listings: Listing[]; activities: ListingActivityEvent[] };
+type ListingStoreCachedSnapshot = {
+  snapshot: ListingStoreSnapshot;
+  _rawL: Listing[];
+  _rawA: ListingActivityEvent[];
+};
+let cachedSnapshot: ListingStoreCachedSnapshot | null = null;
 
 function getSnapshot() {
   if (!cachedSnapshot || cachedSnapshot._rawL !== listings || cachedSnapshot._rawA !== activities) {
     cachedSnapshot = {
-      listings: listListings(),
-      activities: activities.slice(),
+      snapshot: { listings: listListings(), activities: activities.slice() },
       _rawL: listings,
       _rawA: activities,
-    } as any;
+    };
   }
-  return cachedSnapshot as { listings: Listing[]; activities: ListingActivityEvent[] };
+  return cachedSnapshot.snapshot;
 }
 
 export function useListingStore() {

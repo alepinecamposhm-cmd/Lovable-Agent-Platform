@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   AlertCircle,
   BookOpen,
@@ -37,9 +37,14 @@ import { cn } from '@/lib/utils';
 import { format, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BuyCreditsDialog } from '@/components/agents/credits/BuyCreditsDialog';
-import { useCreditAccount, useCreditLedger, useUpdateCreditAccount, useSaveCreditRules, useSaveCreditLimits, useCreditMetrics, useCreditInvoices } from '@/lib/credits/query';
+import { fetchInvoicePdf, useCreditAccount, useCreditLedger, useUpdateCreditAccount, useSaveCreditRules, useSaveCreditLimits, useCreditMetrics, useCreditInvoices } from '@/lib/credits/query';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { useSearchParams } from 'react-router-dom';
+import { downloadBlob } from '@/lib/credits/download';
+import { getCurrentUser } from '@/lib/agents/team/store';
+import { useAnimatedNumber } from '@/lib/credits/useAnimatedNumber';
+import type { CreditLedgerEntry } from '@/types/agents';
 
 const PER_PAGE = 10;
 const INVOICE_PER_PAGE = 10;
@@ -59,6 +64,9 @@ const track = (event: string, properties?: Record<string, unknown>) => {
     body: JSON.stringify({ event, properties }),
   }).catch(() => {});
 };
+
+type LedgerReference = { type: 'lead' | 'listing' | 'receipt'; label: string; path: string };
+type LedgerDetail = { entry: CreditLedgerEntry; reference?: LedgerReference };
 
 function HelpDialog() {
   return (
@@ -105,15 +113,48 @@ function LoadingRow() {
 }
 
 export default function AgentCredits() {
+  const currentUser = getCurrentUser();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState<'all' | 'credit' | 'debit'>('all');
   const [invoicePage, setInvoicePage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'overview' | 'invoices'>('overview');
   const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [ledgerDetail, setLedgerDetail] = useState<{ entry: any; reference?: { type: string; label: string; path: string } } | null>(null);
+  const [ledgerDetail, setLedgerDetail] = useState<LedgerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+
+  const activeTab: 'overview' | 'invoices' =
+    searchParams.get('tab') === 'invoices' ? 'invoices' : 'overview';
+  const purchaseOpen = searchParams.get('purchase') === '1';
+  const purchaseOpenedOnceRef = useRef(false);
+
+  const setTab = (tab: 'overview' | 'invoices', source: 'url' | 'ui' = 'ui') => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      return next;
+    }, { replace: true });
+    track('credits_tab_view', { tab, source });
+  };
+
+  const setPurchase = (open: boolean, source: 'url' | 'cta_header' | 'cta_empty' | 'insufficient_modal' | 'low_balance_notif' = 'cta_header') => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (open) next.set('purchase', '1');
+      else next.delete('purchase');
+      return next;
+    }, { replace: open ? false : true });
+    if (open) {
+      purchaseOpenedOnceRef.current = true;
+      track('credits_purchase_modal_open', { source });
+    }
+    else track('credits_purchase_modal_close', { reason: 'dialog' });
+  };
+
+  const reduceMotion = useReducedMotion();
 
   const accountQuery = useCreditAccount();
   const account = accountQuery.data;
@@ -149,6 +190,25 @@ export default function AgentCredits() {
   const isLowBalance = !!account && account.balance <= account.lowBalanceThreshold;
   const isLedgerSeed = ledgerData?.source === 'seed';
   const isInvoicesSeed = invoicesData?.source === 'seed';
+  const animatedBalance = useAnimatedNumber(account?.balance, { durationMs: 650 });
+  const prevBalanceAnimRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (purchaseOpen && !purchaseOpenedOnceRef.current) {
+      purchaseOpenedOnceRef.current = true;
+      track('credits_purchase_modal_open', { source: 'url' });
+    }
+  }, [purchaseOpen]);
+
+  useEffect(() => {
+    const next = account?.balance;
+    if (typeof next !== 'number') return;
+    const prev = prevBalanceAnimRef.current;
+    prevBalanceAnimRef.current = next;
+    if (prev != null && prev !== next && !reduceMotion) {
+      track('credits_balance_animated', { from: prev, to: next, source: 'credits_page' });
+    }
+  }, [account?.balance, reduceMotion]);
 
   useEffect(() => {
     if (account) {
@@ -210,7 +270,7 @@ export default function AgentCredits() {
       const res = await fetch('/api/credits/low-balance-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'agent@example.com', balance: account?.balance }),
+        body: JSON.stringify({ email: currentUser.email || 'agent@example.com', balance: account?.balance }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error('fail');
@@ -229,10 +289,15 @@ export default function AgentCredits() {
       const res = await fetch(`/api/credits/ledger/${id}`);
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar el detalle');
-      setLedgerDetail({ entry: json.entry, reference: json.reference });
+      const entry: CreditLedgerEntry = {
+        ...json.entry,
+        createdAt: new Date(json.entry.createdAt),
+      };
+      setLedgerDetail({ entry, reference: json.reference as LedgerReference | undefined });
       track('credits_ledger_item_open', { id });
-    } catch (e: any) {
-      setDetailError(e?.message || 'No se pudo cargar el detalle');
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setDetailError(message || 'No se pudo cargar el detalle');
     } finally {
       setDetailLoading(false);
     }
@@ -255,11 +320,14 @@ export default function AgentCredits() {
         </div>
         <div className="flex items-center gap-3">
           <HelpDialog />
-          <BuyCreditsDialog />
+          <BuyCreditsDialog
+            open={purchaseOpen}
+            onOpenChange={(open) => setPurchase(open, 'cta_header')}
+          />
         </div>
       </motion.div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'overview' | 'invoices')}>
+      <Tabs value={activeTab} onValueChange={(v) => setTab(v as 'overview' | 'invoices', 'ui')}>
         <TabsList className="mb-4">
           <TabsTrigger value="overview">Resumen</TabsTrigger>
           <TabsTrigger value="invoices">Facturas / Recibos</TabsTrigger>
@@ -287,7 +355,7 @@ export default function AgentCredits() {
             ) : (
               <div className="flex items-baseline gap-2">
                 <span className="text-4xl font-bold">
-                  {accountLoading ? '—' : account?.balance ?? '—'}
+                  {accountLoading ? '—' : animatedBalance ?? '—'}
                 </span>
                 <span className="text-muted-foreground">créditos</span>
               </div>
@@ -387,7 +455,7 @@ export default function AgentCredits() {
               </div>
             </div>
             <div className="flex gap-2">
-              <BuyCreditsDialog trigger={<Button size="sm">Recargar</Button>} />
+              <Button size="sm" onClick={() => setPurchase(true, 'cta_header')}>Recargar</Button>
               <Button variant="ghost" size="sm" onClick={handleLowBalanceEmail}>Enviar recordatorio</Button>
             </div>
           </CardContent>
@@ -532,7 +600,9 @@ export default function AgentCredits() {
                         <div className="py-6 text-center text-sm text-muted-foreground space-y-2">
                           <BookOpen className="h-5 w-5 mx-auto" />
                           <p>Aún no hay movimientos.</p>
-                          <BuyCreditsDialog trigger={<Button size="sm">Comprar créditos</Button>} />
+                          <Button size="sm" onClick={() => setPurchase(true, 'cta_empty')}>
+                            Comprar créditos
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -750,32 +820,52 @@ export default function AgentCredits() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            const blob = new Blob([`Recibo ${inv.id}\nMonto: $${inv.amount}\nCréditos: ${inv.credits}\nMétodo: ${inv.paymentMethod}`], { type: 'text/plain' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `recibo-${inv.id}.txt`;
-                            a.click();
-                            track('credits_invoice_download', { id: inv.id });
+                          disabled={downloadingInvoiceId === inv.id}
+                          onClick={async () => {
+                            setDownloadingInvoiceId(inv.id);
+                            try {
+                              const blob = await fetchInvoicePdf(inv.id);
+                              downloadBlob(blob, `recibo-${inv.id}.pdf`);
+                              track('credits_invoice_pdf_download', { receiptId: inv.id, source: 'credits_invoices_table' });
+                            } catch (err) {
+                              toast.error('No se pudo descargar el PDF');
+                            } finally {
+                              setDownloadingInvoiceId(null);
+                            }
                           }}
                         >
-                          Descargar
+                          {downloadingInvoiceId === inv.id ? (
+                            <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Descargando…</span>
+                          ) : (
+                            'Descargar PDF'
+                          )}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
+                          disabled={sendingInvoiceId === inv.id}
                           onClick={async () => {
-                            await fetch('/api/credits/receipt/email', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ receiptId: inv.id, email: 'agent@example.com' }),
-                            });
-                            toast.success('Recibo enviado');
-                            track('credits_invoice_email', { id: inv.id });
+                            setSendingInvoiceId(inv.id);
+                            try {
+                              await fetch('/api/credits/receipt/email', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ receiptId: inv.id, email: currentUser.email || 'agent@example.com' }),
+                              });
+                              toast.success('Recibo enviado');
+                              track('credits_receipt_email_manual', { receiptId: inv.id });
+                            } catch (err) {
+                              toast.error('No se pudo enviar el recibo');
+                            } finally {
+                              setSendingInvoiceId(null);
+                            }
                           }}
                         >
-                          Enviar email
+                          {sendingInvoiceId === inv.id ? (
+                            <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Enviando…</span>
+                          ) : (
+                            'Enviar email'
+                          )}
                         </Button>
                       </div>
                     </TableCell>

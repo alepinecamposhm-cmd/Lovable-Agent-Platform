@@ -123,7 +123,7 @@ export default function AgentListingWizard() {
     setForm(initialForm);
   }, [initialForm]);
 
-  const handleChange = (field: keyof FormState, value: any) => {
+  const handleChange = <K extends keyof FormState>(field: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -171,7 +171,7 @@ export default function AgentListingWizard() {
       setSaving(false);
       const targetId = mode === 'create' && saved ? (saved as Listing).id : listingId!;
       navigate(`/agents/listings/${targetId}`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       setError('No pudimos guardar el listing.');
       setSaving(false);

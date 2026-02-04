@@ -7,9 +7,9 @@ const cloneAccount = () => ({ ...mockCreditAccount, createdAt: new Date(mockCred
 const cloneLedger = () => mockLedger.map((e) => ({ ...e, createdAt: new Date(e.createdAt) }));
 const cloneInvoices = () => mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
 
-let creditAccountLive = cloneAccount();
-let ledgerLive = cloneLedger();
-let invoicesLive = cloneInvoices();
+const creditAccountLive = cloneAccount();
+const ledgerLive = cloneLedger();
+const invoicesLive = cloneInvoices();
 
 const DEMO_MODE = true;
 

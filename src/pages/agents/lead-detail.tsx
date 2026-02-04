@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   BadgeCheck,
   Calendar as CalendarIcon,
+  Bookmark,
   CheckCircle2,
   ChevronRight,
   CircleDot,
@@ -44,10 +45,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/use-toast';
-import {
-  mockAppointments,
-  mockLeadActivities,
-} from '@/lib/agents/fixtures';
+import { ToastAction } from '@/components/ui/toast';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import type { Lead, LeadActivity, LeadStage } from '@/types/agents';
@@ -59,6 +57,10 @@ import { addTask, completeTask, undoCompleteTask, useTaskStore } from '@/lib/age
 import { listIntegrations } from '@/lib/agents/integrations/store';
 import { useTeamStore, getCurrentUser } from '@/lib/agents/team/store';
 import { reassignLead } from '@/lib/agents/leads/store';
+import { useAppointmentStore } from '@/lib/agents/appointments/store';
+import { useLeadActivityStore } from '@/lib/agents/leads/activity/store';
+import { useListingStore } from '@/lib/agents/listings/store';
+import { ScheduleAppointmentDialog } from '@/components/agents/leads/ScheduleAppointmentDialog';
 
 const stageConfig: Record<LeadStage, { label: string; color: string }> = {
   new: { label: 'New', color: 'bg-blue-500' },
@@ -82,6 +84,7 @@ const activityIcon: Record<
   assignment_changed: { icon: UserRound, color: 'text-info', bg: 'bg-info/10' },
   stage_change: { icon: CircleDot, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/30' },
   property_viewed: { icon: Eye, color: 'text-muted-foreground', bg: 'bg-muted/40' },
+  property_saved: { icon: Bookmark, color: 'text-muted-foreground', bg: 'bg-muted/40' },
 };
 
 const temperatureLabel = {
@@ -93,32 +96,72 @@ const temperatureLabel = {
 export default function AgentLeadDetail() {
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { leads } = useLeadStore();
   const { tasks } = useTaskStore();
   const { members } = useTeamStore();
-  const lead = leads.find((l) => l.id === params.leadId);
+  const { appointments } = useAppointmentStore();
+  const { activities: allActivities } = useLeadActivityStore();
+  const { listings } = useListingStore();
+
+  const leadId = params.leadId || '';
+  const lead = useMemo(() => leads.find((l) => l.id === leadId), [leads, leadId]);
+
+  const leadTasks = useMemo(() => tasks.filter((t) => t.leadId === leadId), [tasks, leadId]);
+  const leadAppointments = useMemo(() => appointments.filter((apt) => apt.leadId === leadId), [appointments, leadId]);
+  const leadActivities = useMemo(
+    () =>
+      allActivities
+        .filter((a) => a.leadId === leadId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    [allActivities, leadId]
+  );
+  const timelineActivities = useMemo(
+    () => leadActivities.filter((a) => a.type !== 'property_viewed' && a.type !== 'property_saved'),
+    [leadActivities]
+  );
+  const insightsActivities = useMemo(
+    () => leadActivities.filter((a) => a.type === 'property_viewed' || a.type === 'property_saved'),
+    [leadActivities]
+  );
+
+  const listing = useMemo(() => {
+    if (!lead?.listingId) return undefined;
+    return listings.find((l) => l.id === lead.listingId);
+  }, [listings, lead?.listingId]);
+
   const [stage, setStage] = useState<LeadStage>(lead?.stage ?? 'new');
   const [noteDraft, setNoteDraft] = useState(lead?.notes || '');
   const [taskDraft, setTaskDraft] = useState('');
   const [tagDraft, setTagDraft] = useState('');
   const [assignee, setAssignee] = useState<string>(lead?.assignedTo || members[0]?.id || '');
   const [isAssigning, setIsAssigning] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const currentUser = getCurrentUser();
 
   useEffect(() => {
     if (lead) setStage(lead.stage);
-  }, [lead?.stage]);
+  }, [lead]);
 
   useEffect(() => {
-    if (lead) {
-      setNoteDraft(lead.notes || '');
-    }
-  }, [lead?.id]);
+    setNoteDraft(lead?.notes || '');
+  }, [lead?.id, lead?.notes]);
+
+  useEffect(() => {
+    if (!lead) return;
+    setAssignee(lead.assignedTo || members[0]?.id || '');
+  }, [lead?.id, lead?.assignedTo, members]);
+
+  const backTo = (location.state as { backTo?: string } | null)?.backTo;
+  const handleBack = () => {
+    if (backTo) navigate(backTo);
+    else navigate('/agents/leads');
+  };
 
   if (!lead) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+        <Button variant="ghost" onClick={handleBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
           Volver
         </Button>
@@ -131,26 +174,7 @@ export default function AgentLeadDetail() {
     );
   }
 
-  const activities = useMemo(
-    () =>
-      mockLeadActivities
-        .filter((a) => a.leadId === lead.id)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-    [lead.id]
-  );
-
-  const leadTasks = useMemo(
-    () => tasks.filter((t) => t.leadId === lead.id),
-    [tasks, lead.id]
-  );
-
-  const leadAppointments = useMemo(
-    () => mockAppointments.filter((apt) => apt.leadId === lead.id),
-    [lead.id]
-  );
-
   const canManageAssignments = currentUser.role === 'owner' || currentUser.role === 'admin';
-
   const currentStageConfig = stageConfig[stage];
 
   const handleStageChange = (value: LeadStage) => {
@@ -249,7 +273,7 @@ export default function AgentLeadDetail() {
     >
       <div className="flex items-start justify-between gap-4">
         <motion.div variants={staggerItem} className="space-y-2">
-          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" className="gap-2 px-0" onClick={handleBack}>
             <ArrowLeft className="h-4 w-4" />
             Volver a Leads
           </Button>
@@ -293,11 +317,9 @@ export default function AgentLeadDetail() {
               Abrir chat
             </Link>
           </Button>
-          <Button variant="outline" className="gap-2" asChild>
-            <Link to="/agents/calendar">
-              <CalendarIcon className="h-4 w-4" />
-              Agendar visita
-            </Link>
+          <Button variant="outline" className="gap-2" onClick={() => setScheduleOpen(true)}>
+            <CalendarIcon className="h-4 w-4" />
+            Agendar visita
           </Button>
           <Button variant="outline" className="gap-2" onClick={handleDotloop}>
             <Briefcase className="h-4 w-4" />
@@ -427,7 +449,7 @@ export default function AgentLeadDetail() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {activities.map((activity) => {
+                    {timelineActivities.map((activity) => {
                       const Icon = activityIcon[activity.type]?.icon || CircleDot;
                       const iconStyles = activityIcon[activity.type] || {
                         color: 'text-muted-foreground',
@@ -459,7 +481,7 @@ export default function AgentLeadDetail() {
                         </motion.div>
                       );
                     })}
-                    {activities.length === 0 && (
+                    {timelineActivities.length === 0 && (
                       <p className="text-sm text-muted-foreground text-center py-6">
                         Sin actividad reciente
                       </p>
@@ -654,6 +676,110 @@ export default function AgentLeadDetail() {
         <motion.div variants={staggerItem} className="space-y-4">
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">Contexto del lead</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Mensaje inicial</p>
+                {lead.message ? (
+                  <div className="mt-2 rounded-lg border bg-muted/30 p-3 text-sm">
+                    {lead.message}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Este lead no tiene contexto de listing/mensaje.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg border bg-card p-3">
+                  <p className="text-xs text-muted-foreground">Pre-aprobado</p>
+                  <p className="text-sm font-medium">
+                    {typeof lead.preApproved === 'boolean' ? (lead.preApproved ? 'Sí' : 'No') : '—'}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-card p-3">
+                  <p className="text-xs text-muted-foreground">Timeframe</p>
+                  <p className="text-sm font-medium">{lead.timeframe ? lead.timeframe.replace(' months', ' meses') : '—'}</p>
+                </div>
+              </div>
+
+              {lead.listingId && (
+                listing ? (
+                  <Link
+                    to={`/agents/listings/${listing.id}`}
+                    className="block rounded-lg border overflow-hidden hover:shadow-sm transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  >
+                    {listing.media?.[0]?.url ? (
+                      <img src={listing.media[0].url} alt="Listing" className="h-32 w-full object-cover" />
+                    ) : (
+                      <div className="h-32 w-full bg-muted/40" />
+                    )}
+                    <div className="p-3">
+                      <p className="text-sm font-medium truncate">
+                        {listing.address.street}{listing.address.unit ? ` ${listing.address.unit}` : ''}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {listing.listingType === 'rent' ? 'Renta' : 'Venta'} · ${listing.price.toLocaleString()} {listing.currency}
+                      </p>
+                    </div>
+                  </Link>
+                ) : (
+                  <div className="rounded-lg border bg-destructive/5 p-3">
+                    <p className="text-sm text-destructive">Listing no disponible</p>
+                    <Button size="sm" variant="outline" className="mt-2" asChild>
+                      <Link to="/agents/listings">Ver Listings</Link>
+                    </Button>
+                  </div>
+                )
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Actividad del cliente</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {insightsActivities.map((activity) => {
+                const listingId = (activity.metadata as any)?.listingId as string | undefined;
+                const activityListing = listingId ? listings.find((l) => l.id === listingId) : undefined;
+                const Icon = activityIcon[activity.type]?.icon || CircleDot;
+                return (
+                  <Link
+                    key={activity.id}
+                    to={activityListing ? `/agents/listings/${activityListing.id}` : '/agents/listings'}
+                    className="flex items-center gap-3 rounded-lg border bg-card p-3 hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                  >
+                    <div className="h-9 w-9 rounded-full bg-muted/40 flex items-center justify-center">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {activity.type === 'property_saved' ? 'Guardó' : 'Vio'}{' '}
+                        {activityListing
+                          ? `${activityListing.address.street}${activityListing.address.unit ? ` ${activityListing.address.unit}` : ''}`
+                          : 'una propiedad'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(activity.createdAt, { addSuffix: true, locale: es })}
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </Link>
+                );
+              })}
+              {insightsActivities.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Sin actividad registrada aún
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="text-base">Ficha del lead</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -727,14 +853,21 @@ export default function AgentLeadDetail() {
                 <Button className="flex-1" asChild>
                   <Link to="/agents/inbox">Responder ahora</Link>
                 </Button>
-                <Button variant="outline" className="flex-1" asChild>
-                  <Link to="/agents/calendar">Programar</Link>
+                <Button variant="outline" className="flex-1" onClick={() => setScheduleOpen(true)}>
+                  Programar
                 </Button>
               </div>
             </CardContent>
           </Card>
         </motion.div>
       </div>
+
+      <ScheduleAppointmentDialog
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        lead={lead}
+        agentId={currentUser.id}
+      />
     </motion.div>
   );
 }

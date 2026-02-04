@@ -933,7 +933,7 @@ export default function AgentTeam() {
           <p className="text-muted-foreground">Miembros, ruteo, performance y auditoría en una vista.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="default" size="sm" onClick={() => { scrollToSection('members'); document.querySelector('input[placeholder=\"email@equipo.com\"]')?.focus(); }}>
+          <Button variant="default" size="sm" onClick={() => { scrollToSection('members'); document.querySelector('input[placeholder="email@equipo.com"]')?.focus(); }}>
             <Users2 className="h-4 w-4 mr-1" /> Invitar
           </Button>
           <Button variant="outline" size="sm" onClick={() => { setWizardOpen(true); setWizardStep(1); scrollToSection('routing'); }}>

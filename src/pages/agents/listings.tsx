@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import {
   Plus,
   Search,
-  Filter,
   LayoutGrid,
   List,
   Eye,
@@ -18,6 +17,12 @@ import {
   Clock,
   AlertCircle,
   Sparkles,
+  Pencil,
+  PauseCircle,
+  PlayCircle,
+  Archive,
+  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,12 +34,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { useListingStore } from '@/lib/agents/listings/store';
+import { toast } from '@/components/ui/use-toast';
+import { deleteListing, updateListing, useListingStore } from '@/lib/agents/listings/store';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { ListingVerificationDialog, ListingBoostDialog } from '@/components/agents/listings/ListingActionDialogs';
 
 const statusConfig: Record<ListingStatus, { label: string; color: string }> = {
   draft: { label: 'Borrador', color: 'bg-muted text-muted-foreground' },
@@ -53,9 +62,7 @@ const verificationConfig: Record<VerificationStatus, { icon: typeof CheckCircle;
   rejected: { icon: AlertCircle, color: 'text-destructive' },
 };
 
-import { ListingVerificationDialog, ListingBoostDialog } from '@/components/agents/listings/ListingActionDialogs';
-
-function ListingCard({ listing }: { listing: Listing }) {
+function ListingCard({ listing, onRestored }: { listing: Listing; onRestored: () => void }) {
   const status = statusConfig[listing.status];
   const verification = verificationConfig[listing.verificationStatus];
   const VerificationIcon = verification.icon;
@@ -63,9 +70,60 @@ function ListingCard({ listing }: { listing: Listing }) {
   const remainingDays = isFeatured
     ? Math.max(1, Math.ceil((listing.featuredUntil!.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : 0;
+  const canDelete = listing.inquiryCount === 0;
 
   const [showVerify, setShowVerify] = useState(false);
   const [showBoost, setShowBoost] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [processing, setProcessing] = useState<null | 'archive' | 'delete'>(null);
+
+  const track = (event: string, properties?: Record<string, unknown>) => {
+    fetch('/api/analytics', {
+      method: 'POST',
+      body: JSON.stringify({ event, properties }),
+    }).catch(() => {});
+  };
+
+  const setStatus = (next: ListingStatus) => {
+    const prev = listing.status;
+    updateListing(listing.id, { status: next });
+    track('listing.status_change', { listingId: listing.id, from: prev, to: next, source: 'list' });
+    toast({ title: 'Estado actualizado', description: `Listing marcado como ${statusConfig[next].label}.` });
+  };
+
+  const restore = () => {
+    const to = listing.archivedFromStatus && listing.archivedFromStatus !== 'archived'
+      ? listing.archivedFromStatus
+      : 'draft';
+    updateListing(listing.id, { status: to, archivedFromStatus: undefined });
+    track('listing.restore', { listingId: listing.id, to });
+    toast({ title: 'Restaurado', description: 'El listing volvió a tu listado.' });
+    onRestored();
+  };
+
+  const archive = () => {
+    setProcessing('archive');
+    const from = listing.status;
+    updateListing(listing.id, { status: 'archived', archivedFromStatus: from });
+    track('listing.archive', { listingId: listing.id, from });
+    toast({ title: 'Archivado', description: 'El listing se movió a Archivados.' });
+    setProcessing(null);
+    setConfirmArchive(false);
+  };
+
+  const remove = () => {
+    setProcessing('delete');
+    const ok = deleteListing(listing.id);
+    if (ok) {
+      track('listing.delete', { listingId: listing.id });
+      toast({ title: 'Eliminado', description: 'El listing se eliminó de tu inventario.' });
+    } else {
+      toast({ title: 'No se pudo eliminar', variant: 'destructive' });
+    }
+    setProcessing(null);
+    setConfirmDelete(false);
+  };
 
   return (
     <>
@@ -99,6 +157,18 @@ function ListingCard({ listing }: { listing: Listing }) {
                   Verificado
                 </Badge>
               )}
+              {listing.verificationStatus === 'pending' && (
+                <Badge className="bg-warning/10 text-warning border-warning/20">
+                  <Clock className="h-3 w-3 mr-1" />
+                  En verificación
+                </Badge>
+              )}
+              {listing.verificationStatus === 'rejected' && (
+                <Badge className="bg-destructive/10 text-destructive border-destructive/20">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Rechazado
+                </Badge>
+              )}
               {isFeatured && (
                 <Badge className="bg-warning text-warning-foreground border-warning/40">
                   <Sparkles className="h-3 w-3 mr-1" />
@@ -115,18 +185,107 @@ function ListingCard({ listing }: { listing: Listing }) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem>Editar</DropdownMenuItem>
-                  {listing.verificationStatus !== 'verified' && (
-                    <DropdownMenuItem onClick={() => setShowVerify(true)}>
-                      Solicitar verificación
+                  <DropdownMenuItem
+                    asChild
+                    onSelect={() => track('listing.action_click', { listingId: listing.id, action: 'edit' })}
+                  >
+                    <Link to={`/agents/listings/${listing.id}/edit`} className="flex items-center gap-2 w-full">
+                      <Pencil className="h-4 w-4" />
+                      Editar
+                    </Link>
+                  </DropdownMenuItem>
+
+                  {listing.verificationStatus !== 'verified' ? (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        track('listing.action_click', { listingId: listing.id, action: 'verification_open' });
+                        setShowVerify(true);
+                      }}
+                    >
+                      <AlertCircle className="h-4 w-4 mr-2" />
+                      {listing.verificationStatus === 'rejected' ? 'Reintentar verificación' : 'Solicitar verificación'}
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      <CheckCircle className="h-4 w-4 mr-2 text-success" />
+                      Verificado
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={() => setShowBoost(true)}>
-                    <Sparkles className="h-3 w-3 mr-2 text-warning" />
+
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      track('listing.action_click', { listingId: listing.id, action: 'boost_open' });
+                      setShowBoost(true);
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2 text-warning" />
                     Destacar (Boost)
                   </DropdownMenuItem>
-                  <DropdownMenuItem>Pausar</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive">Archivar</DropdownMenuItem>
+
+                  {listing.status === 'archived' ? (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        track('listing.action_click', { listingId: listing.id, action: 'restore' });
+                        restore();
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Restaurar
+                    </DropdownMenuItem>
+                  ) : listing.status === 'active' ? (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        track('listing.action_click', { listingId: listing.id, action: 'pause' });
+                        setStatus('paused');
+                      }}
+                    >
+                      <PauseCircle className="h-4 w-4 mr-2" />
+                      Pausar
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        track('listing.action_click', { listingId: listing.id, action: 'activate' });
+                        setStatus('active');
+                      }}
+                    >
+                      <PlayCircle className="h-4 w-4 mr-2" />
+                      Activar
+                    </DropdownMenuItem>
+                  )}
+
+                  <DropdownMenuSeparator />
+
+                  {listing.status !== 'archived' && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        track('listing.action_click', { listingId: listing.id, action: 'archive' });
+                        setConfirmArchive(true);
+                      }}
+                    >
+                      <Archive className="h-4 w-4 mr-2" />
+                      Archivar
+                    </DropdownMenuItem>
+                  )}
+
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      if (!canDelete) {
+                        toast({
+                          title: 'No se puede eliminar',
+                          description: 'Este listing tiene consultas. Te recomendamos archivarlo.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      track('listing.action_click', { listingId: listing.id, action: 'delete' });
+                      setConfirmDelete(true);
+                    }}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar{!canDelete ? ' (bloqueado)' : ''}
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -198,15 +357,53 @@ function ListingCard({ listing }: { listing: Listing }) {
         listing={listing}
         open={showVerify}
         onOpenChange={setShowVerify}
-        onVerify={() => {/* Update local state or re-fetch */ }}
+        onVerify={() => {
+          track('listing.verification_submit', { listingId: listing.id, docCount: listing.verificationDocs?.length ?? 0 });
+        }}
       />
 
       <ListingBoostDialog
         listing={listing}
         open={showBoost}
         onOpenChange={setShowBoost}
-        onBoost={() => {/* Update local state or re-fetch */ }}
+        onBoost={() => {
+          track('boost_applied', { listingId: listing.id });
+        }}
       />
+
+      <AlertDialog open={confirmArchive} onOpenChange={setConfirmArchive}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar archivo</AlertDialogTitle>
+            <AlertDialogDescription>
+              El listing se moverá a la sección de Archivados y dejará de aparecer en tus activos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={processing === 'archive'}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={processing === 'archive'} onClick={archive}>
+              {processing === 'archive' ? 'Procesando…' : 'Archivar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar propiedad</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción afecta visibilidad y no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={processing === 'delete'}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={processing === 'delete'} onClick={remove} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {processing === 'delete' ? 'Procesando…' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -331,6 +528,7 @@ export default function AgentListings() {
               <TabsTrigger value="active">Activos</TabsTrigger>
               <TabsTrigger value="draft">Borradores</TabsTrigger>
               <TabsTrigger value="paused">Pausados</TabsTrigger>
+              <TabsTrigger value="archived">Archivados</TabsTrigger>
             </TabsList>
           </Tabs>
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'grid' | 'list')}>
@@ -356,7 +554,7 @@ export default function AgentListings() {
         )}
       >
         {filteredListings.map((listing) => (
-          <ListingCard key={listing.id} listing={listing} />
+          <ListingCard key={listing.id} listing={listing} onRestored={() => setStatusFilter('all')} />
         ))}
 
         {filteredListings.length === 0 && (
@@ -366,6 +564,14 @@ export default function AgentListings() {
             <p className="text-muted-foreground">
               Intenta con otros filtros o agrega una nueva propiedad
             </p>
+            <div className="mt-4">
+              <Button asChild>
+                <Link to="/agents/listings/new">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nueva Propiedad
+                </Link>
+              </Button>
+            </div>
           </div>
         )}
       </motion.div>

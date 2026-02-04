@@ -197,3 +197,49 @@
 - **Files changed:** `eslint.config.js`.
 - **Riesgo:** reduce cobertura de lint. Mitigación: mantener tests/build como gate y reactivar reglas por fases cuando se aborde el baseline.
 - **Rollback:** revertir `eslint.config.js`.
+---
+
+## Sprint Reportes (04/02/2026) — Performance Reports + Overview KPIs + Agent Health Score
+
+### Qué se implementó (solo Reportes según PDF)
+- **Subnavegación + rutas**:
+  - `/agents/reports` (Overview)
+  - `/agents/reports/leads` (Lead Report)
+  - `/agents/reports/team` (Team Report, solo líderes)
+  - `/agents/reports/experience` y `/agents/reports/roi` ahora muestran subnav consistente
+- **Periodo global**: selector `7d/30d/90d/All` persistido en `localStorage` (`agenthub_reports_period`).
+- **Lead Report**: volumen por periodo + breakdown por `tipo/ZIP/rango` + **answer rate (<5m)**.
+- **Team Report**: pipeline consolidado + tabla por agente/estado + answer rate por miembro; gating por rol (`owner/admin/broker`) con estado “restricted”.
+- **Overview (Reports)**:
+  - KPIs del PDF: answer rate <5m, conversión a cita, no-show, leads activos, tasa de cierre, % perfil completado (y tiempo medio 1a respuesta como apoyo).
+  - “Desempeño por listing”: conteo de `inquiry` por listing en el periodo.
+  - “Agent Health Score”: card + modal con breakdown transparente (sin frustración) y tips accionables.
+
+### Tracking mínimo (Reportes)
+- Endpoint: `POST /api/analytics` (best-effort) vía `src/lib/agents/reports/analytics.ts`.
+- Eventos: `reports.view`, `reports.nav_click`, `reports.overview_view`, `reports.overview_period_changed`, `reports.lead_report_*`, `reports.team_report_*`, `reports.listing_performance_*`, `reports.score_detail_opened/closed`.
+
+### Persistencia mínima
+- `localStorage`:
+  - `agenthub_reports_period`
+  - `agenthub_reports_leads_breakdown` (Lead Report)
+
+### Datos/fixtures (para Team Report realista)
+- Se reasignaron algunos `mockLeads.assignedTo` a `agent-2` y `agent-3` para que el Team Report muestre múltiples agentes.
+- **Riesgo**: en un navegador con `localStorage` ya poblado, puede no reflejarse hasta limpiar storage.
+- **Cómo probar**: hard reload + (si hace falta) limpiar `localStorage` keys `agenthub_leads` y `agenthub_team_members`.
+
+### Cambios cross-módulo (bloqueo directo: ENG-01 lint verde)
+- **Motivo**: el sprint requería `npm run lint` ✅ (PR checklist en PDF) para no bloquear integración.
+- **Archivos tocados (fuera de Reportes)**:
+  - Tipado / `unknown` en stores y handlers: `src/lib/agents/*/store.ts`, `src/lib/audit/store.ts`, `src/mocks/handlers.ts`, `src/lib/credits/query.ts`.
+  - Hooks condicionales: `src/pages/agents/lead-detail.tsx`, `src/pages/agents/listing-detail.tsx`.
+  - Tailwind ESM: `tailwind.config.ts`.
+  - UI types: `src/components/ui/command.tsx`, `src/components/ui/textarea.tsx`.
+- **Riesgo**: cambios de tipado pueden ocultar errores de runtime si hay casts mal hechos; tailwind config ESM podría romper en entornos que esperen CJS.
+- **Cómo testear**:
+  - `npm run lint` (debe terminar sin errores)
+  - `npm run test`
+  - `npm run build`
+  - Smoke manual: navegar a `/agents/reports`, `/agents/reports/leads`, `/agents/reports/team`
+- **Rollback plan**: revertir los commits/patches de los archivos listados arriba (en orden: tailwind config + stores/handlers + pages).

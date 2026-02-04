@@ -231,12 +231,13 @@ export default function AgentCredits() {
     setDetailError(null);
     try {
       const res = await fetch(`/api/credits/ledger/${id}`);
-      const json = await res.json();
+      const json = (await res.json()) as { ok?: boolean; entry?: unknown; reference?: unknown; error?: string };
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar el detalle');
-      const entry = {
-        ...(json.entry as Omit<CreditLedgerEntry, 'createdAt'>),
-        createdAt: new Date((json.entry as { createdAt: string }).createdAt),
-      } as CreditLedgerEntry;
+      const entryRaw = (json.entry ?? {}) as Record<string, unknown>;
+      const entry: CreditLedgerEntry = {
+        ...(entryRaw as CreditLedgerEntry),
+        createdAt: entryRaw.createdAt ? new Date(String(entryRaw.createdAt)) : new Date(),
+      };
       setLedgerDetail({ entry, reference: json.reference as LedgerReference | undefined });
       track('credits_ledger_item_open', { id });
     } catch (e: unknown) {

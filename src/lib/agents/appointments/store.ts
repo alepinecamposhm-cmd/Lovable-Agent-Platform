@@ -11,16 +11,16 @@ function load(): Appointment[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockAppointments;
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return mockAppointments;
     return parsed.map((aptRaw) => {
       const apt = aptRaw as Record<string, unknown>;
       return {
-        ...(aptRaw as Omit<Appointment, 'scheduledAt' | 'createdAt' | 'updatedAt'>),
-        scheduledAt: typeof apt.scheduledAt === 'string' ? parseISO(apt.scheduledAt) : new Date(),
-        createdAt: typeof apt.createdAt === 'string' ? parseISO(apt.createdAt) : new Date(),
-        updatedAt: typeof apt.updatedAt === 'string' ? parseISO(apt.updatedAt) : new Date(),
-      };
+        ...(apt as Appointment),
+        scheduledAt: apt.scheduledAt ? parseISO(String(apt.scheduledAt)) : new Date(),
+        createdAt: apt.createdAt ? parseISO(String(apt.createdAt)) : new Date(),
+        updatedAt: apt.updatedAt ? parseISO(String(apt.updatedAt)) : new Date(),
+      } satisfies Appointment;
     });
   } catch (e) {
     console.error('Failed to parse appointments', e);

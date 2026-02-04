@@ -9,25 +9,26 @@ const ACTIVITIES_KEY = 'agenthub_listing_activities';
 const listeners = new Set<() => void>();
 
 function hydrateListing(raw: unknown): Listing {
-  const item = raw as Record<string, unknown>;
+  const r = raw as Record<string, unknown>;
   return {
-    ...(item as unknown as Listing),
-    listedAt: typeof item.listedAt === 'string' ? parseISO(item.listedAt) : undefined,
-    expiresAt: typeof item.expiresAt === 'string' ? parseISO(item.expiresAt) : undefined,
-    featuredUntil: typeof item.featuredUntil === 'string' ? parseISO(item.featuredUntil) : undefined,
-    soldAt: typeof item.soldAt === 'string' ? parseISO(item.soldAt) : undefined,
-    verificationSubmittedAt: typeof item.verificationSubmittedAt === 'string' ? parseISO(item.verificationSubmittedAt) : undefined,
-    createdAt: typeof item.createdAt === 'string' ? parseISO(item.createdAt) : new Date(),
-    updatedAt: typeof item.updatedAt === 'string' ? parseISO(item.updatedAt) : new Date(),
-  } as Listing;
+    ...(r as Listing),
+    listedAt: r.listedAt ? parseISO(String(r.listedAt)) : undefined,
+    expiresAt: r.expiresAt ? parseISO(String(r.expiresAt)) : undefined,
+    featuredUntil: r.featuredUntil ? parseISO(String(r.featuredUntil)) : undefined,
+    soldAt: r.soldAt ? parseISO(String(r.soldAt)) : undefined,
+    verificationSubmittedAt: r.verificationSubmittedAt ? parseISO(String(r.verificationSubmittedAt)) : undefined,
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+    updatedAt: r.updatedAt ? parseISO(String(r.updatedAt)) : new Date(),
+  };
 }
 
 function hydrateActivity(raw: unknown): ListingActivityEvent {
-  const item = raw as Record<string, unknown>;
+  const r = raw as Record<string, unknown>;
   return {
-    ...(item as unknown as ListingActivityEvent),
-    createdAt: typeof item.createdAt === 'string' ? parseISO(item.createdAt) : new Date(),
-  } as ListingActivityEvent;
+    ...(r as ListingActivityEvent),
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+  };
+}
 }
 
 function loadListings(): Listing[] {
@@ -35,7 +36,9 @@ function loadListings(): Listing[] {
   const raw = window.localStorage.getItem(LISTINGS_KEY);
   if (!raw) return mockListings;
   try {
-    return JSON.parse(raw).map(hydrateListing);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockListings;
+    return parsed.map(hydrateListing);
   } catch (e) {
     console.error('Failed to parse listings', e);
     return mockListings;
@@ -47,7 +50,9 @@ function loadActivities(): ListingActivityEvent[] {
   const raw = window.localStorage.getItem(ACTIVITIES_KEY);
   if (!raw) return mockListingActivities;
   try {
-    return JSON.parse(raw).map(hydrateActivity);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockListingActivities;
+    return parsed.map(hydrateActivity);
   } catch (e) {
     console.error('Failed to parse listing activities', e);
     return mockListingActivities;

@@ -84,14 +84,14 @@ function load(): Notification[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return seed;
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return seed;
     return parsed.map((nRaw) => {
       const n = nRaw as Record<string, unknown>;
       return {
-        ...(nRaw as Omit<Notification, 'createdAt'>),
-        createdAt: typeof n.createdAt === 'string' ? parseISO(n.createdAt) : new Date(),
-      };
+        ...(n as Notification),
+        createdAt: n.createdAt ? parseISO(String(n.createdAt)) : new Date(),
+      } satisfies Notification;
     });
   } catch (e) {
     console.error('Failed to parse notifications', e);

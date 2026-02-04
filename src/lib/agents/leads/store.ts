@@ -12,29 +12,22 @@ function load(): Lead[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockLeads;
   try {
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return mockLeads;
     return parsed.map((leadRaw) => {
       const lead = leadRaw as Record<string, unknown>;
       return {
-        ...(leadRaw as Omit<
-          Lead,
-          | 'createdAt'
-          | 'updatedAt'
-          | 'lastContactedAt'
-          | 'lastActivityAt'
-          | 'nextFollowUpAt'
-          | 'closedAt'
-          | 'tags'
-        >),
-        createdAt: typeof lead.createdAt === 'string' ? parseISO(lead.createdAt) : new Date(),
-        updatedAt: typeof lead.updatedAt === 'string' ? parseISO(lead.updatedAt) : new Date(),
-        lastContactedAt: typeof lead.lastContactedAt === 'string' ? parseISO(lead.lastContactedAt) : undefined,
-        lastActivityAt: typeof lead.lastActivityAt === 'string' ? parseISO(lead.lastActivityAt) : undefined,
-        nextFollowUpAt: typeof lead.nextFollowUpAt === 'string' ? parseISO(lead.nextFollowUpAt) : undefined,
-        closedAt: typeof lead.closedAt === 'string' ? parseISO(lead.closedAt) : undefined,
+        ...(lead as Lead),
+        createdAt: lead.createdAt ? parseISO(String(lead.createdAt)) : new Date(),
+        updatedAt: lead.updatedAt ? parseISO(String(lead.updatedAt)) : new Date(),
+        assignedAt: lead.assignedAt ? parseISO(String(lead.assignedAt)) : undefined,
+        acceptedAt: lead.acceptedAt ? parseISO(String(lead.acceptedAt)) : undefined,
+        lastContactedAt: lead.lastContactedAt ? parseISO(String(lead.lastContactedAt)) : undefined,
+        lastActivityAt: lead.lastActivityAt ? parseISO(String(lead.lastActivityAt)) : undefined,
+        nextFollowUpAt: lead.nextFollowUpAt ? parseISO(String(lead.nextFollowUpAt)) : undefined,
+        closedAt: lead.closedAt ? parseISO(String(lead.closedAt)) : undefined,
         tags: Array.isArray(lead.tags) ? (lead.tags as string[]) : [],
-      };
+      } satisfies Lead;
     });
   } catch (e) {
     loadError = 'Failed to parse leads from storage';
@@ -49,6 +42,8 @@ function save(data: Lead[]) {
     ...lead,
     createdAt: formatISO(lead.createdAt),
     updatedAt: formatISO(lead.updatedAt),
+    assignedAt: lead.assignedAt ? formatISO(lead.assignedAt) : undefined,
+    acceptedAt: lead.acceptedAt ? formatISO(lead.acceptedAt) : undefined,
     lastContactedAt: lead.lastContactedAt ? formatISO(lead.lastContactedAt) : undefined,
     lastActivityAt: lead.lastActivityAt ? formatISO(lead.lastActivityAt) : undefined,
     nextFollowUpAt: lead.nextFollowUpAt ? formatISO(lead.nextFollowUpAt) : undefined,

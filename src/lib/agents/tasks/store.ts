@@ -7,13 +7,13 @@ const STORAGE_KEY = 'agenthub_tasks';
 const listeners = new Set<() => void>();
 
 function hydrateTask(raw: unknown): Task {
-  const task = raw as Record<string, unknown>;
+  const r = raw as Record<string, unknown>;
   return {
-    ...(task as unknown as Task),
-    dueAt: typeof task.dueAt === 'string' ? parseISO(task.dueAt) : undefined,
-    createdAt: typeof task.createdAt === 'string' ? parseISO(task.createdAt) : new Date(),
-    completedAt: typeof task.completedAt === 'string' ? parseISO(task.completedAt) : undefined,
-    snoozedUntil: typeof task.snoozedUntil === 'string' ? parseISO(task.snoozedUntil) : undefined,
+    ...(r as Task),
+    dueAt: r.dueAt ? parseISO(String(r.dueAt)) : undefined,
+    createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
+    completedAt: r.completedAt ? parseISO(String(r.completedAt)) : undefined,
+    snoozedUntil: r.snoozedUntil ? parseISO(String(r.snoozedUntil)) : undefined,
   };
 }
 
@@ -22,7 +22,9 @@ function load(): Task[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return mockTasks;
   try {
-    return JSON.parse(raw).map(hydrateTask);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockTasks;
+    return parsed.map(hydrateTask);
   } catch (e) {
     console.error('Failed to parse tasks', e);
     return mockTasks;

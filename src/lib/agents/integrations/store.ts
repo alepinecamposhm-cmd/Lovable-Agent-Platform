@@ -18,10 +18,10 @@ const defaults: IntegrationState[] = [
 ];
 
 function hydrate(raw: unknown): IntegrationState {
-  const item = raw as Record<string, unknown>;
+  const r = raw as Record<string, unknown>;
   return {
-    ...(raw as Omit<IntegrationState, 'lastSyncedAt'>),
-    lastSyncedAt: typeof item.lastSyncedAt === 'string' ? new Date(item.lastSyncedAt) : undefined,
+    ...(r as IntegrationState),
+    lastSyncedAt: r.lastSyncedAt ? new Date(String(r.lastSyncedAt)) : undefined,
   };
 }
 
@@ -30,7 +30,9 @@ function load(): IntegrationState[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return defaults;
   try {
-    return JSON.parse(raw).map(hydrate);
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return defaults;
+    return parsed.map(hydrate);
   } catch (e) {
     return defaults;
   }

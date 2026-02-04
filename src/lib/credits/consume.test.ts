@@ -13,7 +13,7 @@ const account: CreditAccount = {
   rules: [],
   createdAt: new Date('2024-01-01'),
   updatedAt: new Date('2024-01-01'),
-};
+} satisfies CreditAccount;
 
 const ledger: CreditLedgerEntry[] = [];
 

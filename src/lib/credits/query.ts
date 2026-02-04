@@ -55,14 +55,11 @@ function loadLedgerSeed(): CreditLedgerEntry[] {
     return seed;
   }
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) throw new Error('Invalid ledger seed');
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return cloneLedgerSeed();
     return parsed.map((eRaw) => {
-      const entry = eRaw as Record<string, unknown>;
-      return {
-        ...(eRaw as Omit<CreditLedgerEntry, 'createdAt'>),
-        createdAt: typeof entry.createdAt === 'string' ? new Date(entry.createdAt) : new Date(),
-      } as CreditLedgerEntry;
+      const e = eRaw as Record<string, unknown>;
+      return { ...(e as CreditLedgerEntry), createdAt: new Date(String(e.createdAt)) };
     });
   } catch {
     const seed = cloneLedgerSeed();
@@ -85,14 +82,11 @@ function loadInvoiceSeed(): CreditInvoice[] {
     return seed;
   }
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) throw new Error('Invalid invoice seed');
-    return parsed.map((iRaw) => {
-      const invoice = iRaw as Record<string, unknown>;
-      return {
-        ...(iRaw as Omit<CreditInvoice, 'createdAt'>),
-        createdAt: typeof invoice.createdAt === 'string' ? new Date(invoice.createdAt) : new Date(),
-      } as CreditInvoice;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
+    return parsed.map((eRaw) => {
+      const e = eRaw as Record<string, unknown>;
+      return { ...(e as CreditInvoice), createdAt: new Date(String(e.createdAt)) };
     });
   } catch {
     const seed = mockInvoices.map((i) => ({ ...i, createdAt: new Date(i.createdAt) }));
@@ -284,14 +278,10 @@ async function fetchInvoices(params: { page: number; pageSize?: number }): Promi
     const res = await fetch(`/api/credits/invoices?${search.toString()}`);
     const json = await res.json();
     if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudieron cargar las facturas');
-    const invoices = (Array.isArray((json as { invoices?: unknown }).invoices) ? (json as { invoices: unknown[] }).invoices : [])
-      .map((iRaw) => {
-        const invoice = iRaw as Record<string, unknown>;
-        return {
-          ...(iRaw as Omit<CreditInvoice, 'createdAt'>),
-          createdAt: typeof invoice.createdAt === 'string' ? new Date(invoice.createdAt) : new Date(),
-        } as CreditInvoice;
-      });
+    const invoices = (Array.isArray(json.invoices) ? json.invoices : []).map((iRaw: unknown) => {
+      const i = iRaw as Record<string, unknown>;
+      return { ...(i as CreditInvoice), createdAt: new Date(String(i.createdAt)) } satisfies CreditInvoice;
+    });
     if (!invoices.length) return fallback();
     saveInvoiceSeed(invoices);
     return {

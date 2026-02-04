@@ -190,15 +190,6 @@ export default function AgentListingDetail() {
     ];
   }, [listing]);
 
-  const engagement = useMemo(() => {
-    if (!listing) return [];
-    return [
-      { label: 'Vistas', icon: Eye, value: listing.viewCount },
-      { label: 'Guardados', icon: Heart, value: listing.saveCount },
-      { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
-    ];
-  }, [listing]);
-
   useEffect(() => {
     try {
       if (!listing) {

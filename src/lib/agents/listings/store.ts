@@ -29,7 +29,6 @@ function hydrateActivity(raw: unknown): ListingActivityEvent {
     createdAt: r.createdAt ? parseISO(String(r.createdAt)) : new Date(),
   };
 }
-}
 
 function loadListings(): Listing[] {
   if (typeof window === 'undefined') return mockListings;

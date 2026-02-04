@@ -238,13 +238,19 @@ export interface Listing {
   media: ListingMedia[];
   virtualTourUrl?: string;
   status: ListingStatus;
+  archivedFromStatus?: ListingStatus;
   verificationStatus: VerificationStatus;
+  verificationSubmittedAt?: Date;
+  verificationDocs?: VerificationDoc[];
+  verificationReviewNote?: string;
   viewCount: number;
   saveCount: number;
   inquiryCount: number;
   listedAt?: Date;
   expiresAt?: Date;
   soldAt?: Date;
+  closedPrice?: number;
+  closedBuyerName?: string;
   featuredUntil?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -279,6 +285,13 @@ export interface ListingMedia {
   type: 'image' | 'video';
   order: number;
   caption?: string;
+}
+
+export interface VerificationDoc {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface ListingActivityEvent {

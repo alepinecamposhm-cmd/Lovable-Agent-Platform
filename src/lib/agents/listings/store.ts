@@ -15,6 +15,7 @@ function hydrateListing(raw: any): Listing {
     expiresAt: raw.expiresAt ? parseISO(raw.expiresAt) : undefined,
     featuredUntil: raw.featuredUntil ? parseISO(raw.featuredUntil) : undefined,
     soldAt: raw.soldAt ? parseISO(raw.soldAt) : undefined,
+    verificationSubmittedAt: raw.verificationSubmittedAt ? parseISO(raw.verificationSubmittedAt) : undefined,
     createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
     updatedAt: raw.updatedAt ? parseISO(raw.updatedAt) : new Date(),
   } as Listing;
@@ -59,6 +60,7 @@ function saveListings(data: Listing[]) {
     expiresAt: l.expiresAt ? formatISO(l.expiresAt) : undefined,
     featuredUntil: l.featuredUntil ? formatISO(l.featuredUntil) : undefined,
     soldAt: l.soldAt ? formatISO(l.soldAt) : undefined,
+    verificationSubmittedAt: l.verificationSubmittedAt ? formatISO(l.verificationSubmittedAt) : undefined,
     createdAt: formatISO(l.createdAt),
     updatedAt: formatISO(l.updatedAt),
   }));
@@ -113,17 +115,23 @@ export function addListing(input: Partial<Listing>) {
     yearBuilt: input.yearBuilt,
     amenities: input.amenities || [],
     description: input.description || '',
-    coverImage: input.coverImage,
-    features: input.features,
     media: input.media || [],
     virtualTourUrl: input.virtualTourUrl,
     status: input.status || 'draft',
+    archivedFromStatus: input.archivedFromStatus,
     verificationStatus: input.verificationStatus || 'none',
+    verificationSubmittedAt: input.verificationSubmittedAt,
+    verificationDocs: input.verificationDocs || [],
+    verificationReviewNote: input.verificationReviewNote,
     viewCount: 0,
     saveCount: 0,
     inquiryCount: 0,
     listedAt: input.listedAt,
     expiresAt: input.expiresAt,
+    soldAt: input.soldAt,
+    closedPrice: input.closedPrice,
+    closedBuyerName: input.closedBuyerName,
+    featuredUntil: input.featuredUntil,
     createdAt: now,
     updatedAt: now,
   } as Listing;
@@ -145,6 +153,17 @@ export function updateListing(id: string, patch: Partial<Listing>) {
     emit();
   }
   return previous;
+}
+
+export function deleteListing(id: string) {
+  const before = listings.length;
+  listings = listings.filter((l) => l.id !== id);
+  if (listings.length !== before) {
+    saveListings(listings);
+    emit();
+    return true;
+  }
+  return false;
 }
 
 export function addListingActivity(event: ListingActivityEvent) {

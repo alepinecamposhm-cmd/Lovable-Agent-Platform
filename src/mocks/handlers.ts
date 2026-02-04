@@ -1,7 +1,9 @@
 import { http, HttpResponse } from 'msw';
-import { mockLeads, mockContacts, mockCreditAccount, mockLedger, mockInvoices } from '@/lib/agents/fixtures';
+import { mockLeads, mockContacts, mockCreditAccount, mockLedger, mockInvoices, mockListings } from '@/lib/agents/fixtures';
 import { mergeContacts } from '@/lib/contacts/merge';
 import { addAuditEvent } from '@/lib/audit/store';
+import { getPaymentMethod } from '@/lib/credits/paymentMethods';
+import { formatLedgerDescription } from '@/lib/credits/ledgerDescription';
 import type { CreditAccount, CreditInvoice, CreditLedgerEntry, CreditRule } from '@/types/agents';
 
 const cloneAccount = (): CreditAccount => ({
@@ -91,19 +93,12 @@ export const handlers = [
       const body = await req.request.json();
       const { rules } = body;
       if (!Array.isArray(rules)) return HttpResponse.json({ ok: false, error: 'invalid_rules' }, { status: 400 });
-      creditAccountLive.rules = (rules as unknown[]).map((rRaw, idx) => {
-        const r = rRaw as Record<string, unknown>;
-        const action =
-          typeof r.action === 'string'
-            ? (r.action as CreditRule['action'])
-            : ('lead_basic' as CreditRule['action']);
-        return {
-          id: typeof r.id === 'string' ? r.id : `rule-${idx}`,
-          action,
-          cost: typeof r.cost === 'number' ? r.cost : 0,
-          isEnabled: typeof r.isEnabled === 'boolean' ? r.isEnabled : Boolean(r.isEnabled),
-        };
-      });
+      creditAccountLive.rules = (rules as Array<Partial<CreditRule>>).map((r, idx): CreditRule => ({
+        id: r.id ?? `rule-${idx}`,
+        action: r.action ?? 'lead_basic',
+        cost: typeof r.cost === 'number' ? r.cost : 0,
+        isEnabled: typeof r.isEnabled === 'boolean' ? r.isEnabled : true,
+      }));
       creditAccountLive.updatedAt = new Date();
       return HttpResponse.json({ ok: true, rules: creditAccountLive.rules });
     } catch {
@@ -127,13 +122,15 @@ export const handlers = [
   http.post('/api/credits/purchase', async (req) => {
     try {
       const body = await req.request.json();
-      const { accountId, packageId, credits, price } = body;
+      const { accountId, packageId, credits, price, paymentMethodId } = body;
       if (!accountId || !credits || !price) {
         return HttpResponse.json({ ok: false, error: 'invalid_request' }, { status: 400 });
       }
       if (accountId !== creditAccountLive.id) {
         return HttpResponse.status(404);
       }
+
+      const method = getPaymentMethod(paymentMethodId);
 
       // Apply purchase
       creditAccountLive.balance += credits;
@@ -144,7 +141,11 @@ export const handlers = [
         type: 'credit' as const,
         amount: credits,
         balance: creditAccountLive.balance,
-        description: `Compra de créditos (${packageId || credits})`,
+        description: formatLedgerDescription({
+          action: 'purchase',
+          referenceType: 'recharge',
+          paymentMethodLast4: method.last4,
+        }),
         referenceType: 'recharge' as const,
         referenceId: packageId || 'custom',
         createdAt: new Date(),
@@ -154,18 +155,29 @@ export const handlers = [
       addAuditEvent({
         action: 'credit_purchase',
         actor: 'agent-1',
-        payload: { packageId, credits, price, transactionId: entry.id },
+        payload: { packageId, credits, price, transactionId: entry.id, paymentMethodId: method.id },
       });
 
       const receipt = {
-        id: `rcpt-${Date.now()}`,
+        id: `RCPT-${Date.now()}`,
         amount: price,
         credits,
         createdAt: entry.createdAt,
-        paymentMethod: 'card_4242',
+        paymentMethod: method.label,
+        paymentMethodId: method.id,
         accountId: creditAccountLive.id,
         currency: 'USD',
       };
+
+      // Also create invoice record for the purchase (used by Credits > Facturas).
+      invoicesLive.unshift({
+        id: receipt.id,
+        amount: price,
+        credits,
+        paymentMethod: method.label,
+        description: `Paquete ${credits} créditos`,
+        createdAt: entry.createdAt,
+      });
 
       return HttpResponse.json({ ok: true, account: creditAccountLive, transaction: entry, receipt });
     } catch (e) {
@@ -234,6 +246,30 @@ export const handlers = [
       page,
       pageSize,
       total: invoicesLive.length,
+    });
+  }),
+
+  // Invoice PDF download
+  http.get('/api/credits/invoices/:id/pdf', async ({ params }) => {
+    const invoice = invoicesLive.find((i) => i.id === params.id);
+    if (!invoice) return HttpResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
+    const { createInvoicePdf } = await import('@/lib/credits/pdf');
+    const pdfBytes = await createInvoicePdf({
+      id: invoice.id,
+      amount: invoice.amount,
+      credits: invoice.credits,
+      paymentMethod: invoice.paymentMethod,
+      description: invoice.description,
+      createdAt: invoice.createdAt,
+      currency: 'USD',
+    });
+
+    return new HttpResponse(pdfBytes, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="receipt-${invoice.id}.pdf"`,
+      },
     });
   }),
 
@@ -351,12 +387,22 @@ export const handlers = [
         if (account.balance < cost) return HttpResponse.json({ ok: false, error: 'insufficient_balance' }, 402);
 
         // apply consumption
+        const lead = referenceType === 'lead' ? mockLeads.find((l) => l.id === referenceId) : undefined;
+        const listing = referenceType === 'listing' ? mockListings.find((l) => l.id === referenceId) : undefined;
+        const description = formatLedgerDescription({
+          action,
+          referenceType,
+          referenceId,
+          leadName: lead ? `${lead.firstName} ${lead.lastName || ''}`.trim() : undefined,
+          listingLabel: listing?.address?.street,
+        });
         const { consumeCredits } = await import('@/lib/credits/consume');
         const { entry } = consumeCredits(account, ledgerLive, cost, {
           action,
           referenceType,
           referenceId,
           idempotencyKey,
+          description,
         });
 
         idempotencyStore[idempotencyKey] = entry;

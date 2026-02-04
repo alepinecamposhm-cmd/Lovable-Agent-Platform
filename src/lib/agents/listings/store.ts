@@ -8,22 +8,24 @@ const ACTIVITIES_KEY = 'agenthub_listing_activities';
 
 const listeners = new Set<() => void>();
 
-function hydrateListing(raw: any): Listing {
+function hydrateListing(raw: unknown): Listing {
+  const item = raw as Record<string, unknown>;
   return {
-    ...raw,
-    listedAt: raw.listedAt ? parseISO(raw.listedAt) : undefined,
-    expiresAt: raw.expiresAt ? parseISO(raw.expiresAt) : undefined,
-    featuredUntil: raw.featuredUntil ? parseISO(raw.featuredUntil) : undefined,
-    soldAt: raw.soldAt ? parseISO(raw.soldAt) : undefined,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
-    updatedAt: raw.updatedAt ? parseISO(raw.updatedAt) : new Date(),
+    ...(item as unknown as Listing),
+    listedAt: typeof item.listedAt === 'string' ? parseISO(item.listedAt) : undefined,
+    expiresAt: typeof item.expiresAt === 'string' ? parseISO(item.expiresAt) : undefined,
+    featuredUntil: typeof item.featuredUntil === 'string' ? parseISO(item.featuredUntil) : undefined,
+    soldAt: typeof item.soldAt === 'string' ? parseISO(item.soldAt) : undefined,
+    createdAt: typeof item.createdAt === 'string' ? parseISO(item.createdAt) : new Date(),
+    updatedAt: typeof item.updatedAt === 'string' ? parseISO(item.updatedAt) : new Date(),
   } as Listing;
 }
 
-function hydrateActivity(raw: any): ListingActivityEvent {
+function hydrateActivity(raw: unknown): ListingActivityEvent {
+  const item = raw as Record<string, unknown>;
   return {
-    ...raw,
-    createdAt: raw.createdAt ? parseISO(raw.createdAt) : new Date(),
+    ...(item as unknown as ListingActivityEvent),
+    createdAt: typeof item.createdAt === 'string' ? parseISO(item.createdAt) : new Date(),
   } as ListingActivityEvent;
 }
 
@@ -159,18 +161,25 @@ export function listListingActivities(listingId: string) {
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 }
 
-let cachedSnapshot: { listings: Listing[]; activities: ListingActivityEvent[]; _rawL: Listing[]; _rawA: ListingActivityEvent[] } | null = null;
+type ListingStoreSnapshot = {
+  listings: Listing[];
+  activities: ListingActivityEvent[];
+  _rawListings: Listing[];
+  _rawActivities: ListingActivityEvent[];
+};
+
+let cachedSnapshot: ListingStoreSnapshot | null = null;
 
 function getSnapshot() {
-  if (!cachedSnapshot || cachedSnapshot._rawL !== listings || cachedSnapshot._rawA !== activities) {
+  if (!cachedSnapshot || cachedSnapshot._rawListings !== listings || cachedSnapshot._rawActivities !== activities) {
     cachedSnapshot = {
       listings: listListings(),
       activities: activities.slice(),
-      _rawL: listings,
-      _rawA: activities,
-    } as any;
+      _rawListings: listings,
+      _rawActivities: activities,
+    };
   }
-  return cachedSnapshot as { listings: Listing[]; activities: ListingActivityEvent[] };
+  return cachedSnapshot;
 }
 
 export function useListingStore() {

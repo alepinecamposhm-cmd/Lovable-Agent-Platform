@@ -107,13 +107,28 @@ export default function AgentLeadDetail() {
 
   useEffect(() => {
     if (lead) setStage(lead.stage);
-  }, [lead?.stage]);
+  }, [lead]);
 
   useEffect(() => {
-    if (lead) {
-      setNoteDraft(lead.notes || '');
-    }
-  }, [lead?.id]);
+    setNoteDraft(lead?.notes || '');
+  }, [lead]);
+
+  const activities = useMemo(() => {
+    if (!lead) return [];
+    return mockLeadActivities
+      .filter((a) => a.leadId === lead.id)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }, [lead]);
+
+  const leadTasks = useMemo(() => {
+    if (!lead) return [];
+    return tasks.filter((t) => t.leadId === lead.id);
+  }, [tasks, lead]);
+
+  const leadAppointments = useMemo(() => {
+    if (!lead) return [];
+    return mockAppointments.filter((apt) => apt.leadId === lead.id);
+  }, [lead]);
 
   if (!lead) {
     return (
@@ -130,24 +145,6 @@ export default function AgentLeadDetail() {
       </div>
     );
   }
-
-  const activities = useMemo(
-    () =>
-      mockLeadActivities
-        .filter((a) => a.leadId === lead.id)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-    [lead.id]
-  );
-
-  const leadTasks = useMemo(
-    () => tasks.filter((t) => t.leadId === lead.id),
-    [tasks, lead.id]
-  );
-
-  const leadAppointments = useMemo(
-    () => mockAppointments.filter((apt) => apt.leadId === lead.id),
-    [lead.id]
-  );
 
   const canManageAssignments = currentUser.role === 'owner' || currentUser.role === 'admin';
 

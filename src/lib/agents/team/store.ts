@@ -162,7 +162,7 @@ export function removeInvite(id: string) {
 
 export function updateRole(agentId: string, role: TeamRole) {
   members = members.map((m) =>
-    m.id === agentId ? { ...m, role, updatedAt: new Date('2026-01-28') as any } : m
+    m.id === agentId ? { ...m, role, updatedAt: new Date('2026-01-28') } : m
   );
   persistMembers(members);
   addAuditEvent({ action: 'role_changed', actor: mockAgent.id, domain: 'team', payload: { agentId, role } });
@@ -211,8 +211,8 @@ export function isLastAdmin(agentId: string) {
 
 export function transferOwnership(fromId: string, toId: string) {
   members = members.map((m) => {
-    if (m.id === toId) return { ...m, role: 'owner', updatedAt: new Date() as any };
-    if (m.id === fromId) return { ...m, role: 'admin', updatedAt: new Date() as any };
+    if (m.id === toId) return { ...m, role: 'owner', updatedAt: new Date() };
+    if (m.id === fromId) return { ...m, role: 'admin', updatedAt: new Date() };
     return m;
   });
   persistMembers(members);

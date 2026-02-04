@@ -5,8 +5,12 @@ import type { AgentFeedback } from '@/types/agents';
 const STORAGE_KEY = 'agenthub_cx_feedback';
 const listeners = new Set<() => void>();
 
-function hydrate(raw: any): AgentFeedback {
-  return { ...raw, createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date() } as AgentFeedback;
+function hydrate(raw: unknown): AgentFeedback {
+  const item = raw as Record<string, unknown>;
+  return {
+    ...(raw as Omit<AgentFeedback, 'createdAt'>),
+    createdAt: typeof item.createdAt === 'string' ? new Date(item.createdAt) : new Date(),
+  };
 }
 
 function load(): AgentFeedback[] {

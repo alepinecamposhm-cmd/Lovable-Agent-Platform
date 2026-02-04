@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 import { ArrowUpCircle, Upload } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import {
   DndContext,
   closestCenter,
@@ -25,6 +26,7 @@ import {
   UserPlus,
   Users2,
   Trash2,
+  X,
   AlertTriangle,
   ArrowUp,
   ArrowDown,
@@ -39,15 +41,37 @@ import { mockAgent, mockAgentPerformance, mockAgentPerformanceSeries, mockLeads,
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { useRoutingStore, addRule, deleteRule, togglePauseAgent, updateRule, moveRule, getRoutingAlert, setFallback, getFallback } from '@/lib/agents/routing/store';
 import { useTeamStore, addInvite, updateRole, removeMember, isLastAdmin, getCurrentUser, acceptInvite, transferOwnership, listMembers, listInvites, removeInvite } from '@/lib/agents/team/store';
-import { reassignLead, listLeads } from '@/lib/agents/leads/store';
+import { reassignLead, listLeads, useLeadStore } from '@/lib/agents/leads/store';
 import { add as addNotification } from '@/lib/agents/notifications/store';
+import {
+  addReminderRule,
+  canSendReminder,
+  deleteReminderRule,
+  markReminderSent,
+  shouldTriggerReminder,
+  updateReminderRule,
+  useTeamReminderStore,
+} from '@/lib/agents/team/reminders/store';
 import { toast } from '@/components/ui/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { addAuditEvent, listAuditEvents } from '@/lib/audit/store';
-import type { LeadStage } from '@/types/agents';
+import { calcTeamReport, filterLeadsByRange, TEAM_REPORT_STAGES, type TeamReportRange } from '@/lib/agents/team/report';
+import type { LeadStage, TeamRole } from '@/types/agents';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 
 type SortableRowProps = {
   rule: ReturnType<typeof useRoutingStore>['rules'][number];
@@ -60,8 +84,15 @@ type SortableRowProps = {
   slaSeconds: number;
 };
 
+const track = (event: string, properties?: Record<string, unknown>) => {
+  fetch('/api/analytics', {
+    method: 'POST',
+    body: JSON.stringify({ event, properties }),
+  }).catch(() => {});
+};
+
 function SortableRuleRow({ rule, index, teamMembers, conflicts, onToggleActive, onDelete, onMove, slaSeconds }: SortableRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: rule.id });
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: rule.id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -71,6 +102,8 @@ function SortableRuleRow({ rule, index, teamMembers, conflicts, onToggleActive, 
     .map((id) => teamMembers.find((m) => m.id === id)?.firstName || 'Agente')
     .join(', ');
   const conflict = conflicts.has(rule.id);
+  const locations = (rule.locations || []).slice();
+  const leadTypeLabel = rule.leadType === 'any' ? 'ALL' : rule.leadType.toUpperCase();
   return (
     <TableRow ref={setNodeRef} style={style} className={conflict ? 'bg-warning/10' : undefined}>
       <TableCell className="text-xs text-muted-foreground">
@@ -78,7 +111,20 @@ function SortableRuleRow({ rule, index, teamMembers, conflicts, onToggleActive, 
           ☰ #{index + 1}
         </button>
       </TableCell>
-      <TableCell className="font-medium">{rule.zone}</TableCell>
+      <TableCell className="text-sm">
+        <div className="flex flex-wrap gap-1">
+          {locations.slice(0, 2).map((loc) => (
+            <Badge key={loc} variant="secondary" className="font-normal">
+              {loc}
+            </Badge>
+          ))}
+          {locations.length > 2 && <Badge variant="outline">+{locations.length - 2}</Badge>}
+          {locations.length === 0 && <span className="text-muted-foreground">—</span>}
+        </div>
+      </TableCell>
+      <TableCell className="text-xs">
+        <Badge variant={rule.leadType === 'any' ? 'outline' : 'secondary'}>{leadTypeLabel}</Badge>
+      </TableCell>
       <TableCell className="text-sm">
         {rule.minPrice ? `$${rule.minPrice.toLocaleString()}` : '—'} - {rule.maxPrice ? `$${rule.maxPrice.toLocaleString()}` : '—'}
       </TableCell>
@@ -201,21 +247,34 @@ function MiniBarChart({ buckets }: { buckets: { label: string; value: number }[]
   );
 }
 
-function PerformanceCard() {
-  const [range, setRange] = useState<'7d' | '30d'>('7d');
-  const [filterMode, setFilterMode] = useState<'all' | 'zone' | 'type'>('all');
-  const [view, setView] = useState<'kpi' | 'report'>('kpi');
+function PerformanceCard({
+  onTrack,
+  members,
+}: {
+  onTrack: (event: string, properties?: Record<string, unknown>) => void;
+  members: ReturnType<typeof listMembers>;
+}) {
+  const { leads } = useLeadStore();
+  const [range, setRange] = useState<TeamReportRange>('7d');
+  const [filterMode, setFilterMode] = useState<'zone' | 'type'>('zone');
+  const [view, setView] = useState<'kpi' | 'team_report' | 'lead_report'>('kpi');
   const [zipFilter, setZipFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [priceFilter, setPriceFilter] = useState<string>('all');
+  const [drilldownAgentId, setDrilldownAgentId] = useState<string | null>(null);
   const [digest, setDigest] = useState(() => {
     if (typeof window === 'undefined') return { enabled: false, day: 'Mon', hour: '09:00' };
     return JSON.parse(window.localStorage.getItem('agenthub_team_digest') || '{"enabled":false,"day":"Mon","hour":"09:00"}');
   });
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - (range === '7d' ? 7 : 30));
-  const filteredSeries = mockAgentPerformanceSeries.filter((d) => new Date(d.date) >= startDate);
-  const filteredLeads = mockLeads.filter((l) => l.createdAt >= startDate);
+  const filteredLeads = filterLeadsByRange(leads, range);
+
+  const startDate = new Date(range === 'all' ? 0 : Date.now());
+  if (range !== 'all') {
+    startDate.setDate(startDate.getDate() - (range === '7d' ? 7 : 30));
+  }
+  const filteredSeries = range === 'all'
+    ? mockAgentPerformanceSeries.slice()
+    : mockAgentPerformanceSeries.filter((d) => new Date(d.date) >= startDate);
 
   const aggSeries = filteredSeries.reduce<Record<string, { leads: number; resp: number[]; appts: number; rating: number[] }>>((acc, row) => {
     if (!acc[row.agentId]) acc[row.agentId] = { leads: 0, resp: [], appts: 0, rating: [] };
@@ -227,7 +286,7 @@ function PerformanceCard() {
   }, {});
 
   const kpiRows = Object.entries(aggSeries).map(([agentId, data]) => {
-    const member = mockTeamAgents.find((m) => m.id === agentId);
+    const member = members.find((m) => m.id === agentId);
     const avg = (arr: number[]) => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
     const avgRating = data.rating.length ? (data.rating.reduce((a, b) => a + b, 0) / data.rating.length).toFixed(1) : '—';
     const agentLeads = filteredLeads.filter((l) => l.assignedTo === agentId);
@@ -278,16 +337,16 @@ function PerformanceCard() {
     stage,
     value: filteredLeads.filter((l) => l.stage === stage).length,
   }));
-  const funnelByAgent = mockTeamAgents.map((agent) => ({
+  const funnelByAgent = members.map((agent) => ({
     agent,
     counts: funnelStages.map((stage) => filteredLeads.filter((l) => l.assignedTo === agent.id && l.stage === stage).length),
   }));
 
-  const allZips = Array.from(new Set(mockLeads.map((l) => l.zip).filter(Boolean))) as string[];
-  const allTypes = Array.from(new Set(mockLeads.map((l) => l.propertyType || l.interestedIn)));
-  const allPrices = Array.from(new Set(mockLeads.map((l) => l.priceBucket).filter(Boolean))) as string[];
+  const allZips = Array.from(new Set(filteredLeads.map((l) => l.zip).filter(Boolean))) as string[];
+  const allTypes = Array.from(new Set(filteredLeads.map((l) => l.propertyType || l.interestedIn)));
+  const allPrices = Array.from(new Set(filteredLeads.map((l) => l.priceBucket).filter(Boolean))) as string[];
 
-  const reportRows = mockLeads
+  const reportRows = filteredLeads
     .filter((l) => !zipFilter || zipFilter === 'all' || l.zip === zipFilter)
     .filter((l) => !typeFilter || typeFilter === 'all' || l.propertyType === typeFilter || l.interestedIn === typeFilter)
     .filter((l) => !priceFilter || priceFilter === 'all' || l.priceBucket === priceFilter)
@@ -298,13 +357,52 @@ function PerformanceCard() {
       answerRate: l.acceptedAt ? 100 : 60,
     }));
 
-  const exportCsv = (rowsToExport: any[], filename: string) => {
+  const onTrackRef = useRef(onTrack);
+  useEffect(() => {
+    onTrackRef.current = onTrack;
+  }, [onTrack]);
+
+  useEffect(() => {
+    if (view === 'kpi') onTrackRef.current('team.performance_table_viewed', { range });
+    if (view === 'team_report') onTrackRef.current('team.report_viewed', { range });
+  }, [range, view]);
+
+  const topPerformerAgentId = useMemo(() => {
+    const ranked = kpiRows.slice().sort((a, b) => {
+      if (b.resp !== a.resp) return b.resp - a.resp;
+      return b.leads - a.leads;
+    });
+    return ranked[0]?.agentId;
+  }, [kpiRows]);
+
+  const teamReport = useMemo(() => calcTeamReport(filteredLeads, members.map((m) => m.id)), [filteredLeads, members]);
+  const teamLeadsTotal = useMemo(() => teamReport.rows.reduce((sum, r) => sum + r.leads, 0), [teamReport.rows]);
+  const drilldownMember = members.find((m) => m.id === drilldownAgentId);
+  const drilldownLeads = filteredLeads.filter((l) => l.assignedTo === drilldownAgentId);
+
+  const exportCsv = <T extends Record<string, unknown>>(rowsToExport: T[], filename: string) => {
     if (!rowsToExport.length) {
       toast({ title: 'Sin datos para exportar', variant: 'destructive' });
       return;
     }
     const header = Object.keys(rowsToExport[0] || {}).join(',') + '\n';
-    const body = rowsToExport.map((r) => Object.values(r).join(',')).join('\n');
+    const csvCell = (value: unknown) => {
+      const raw =
+        typeof value === 'string'
+          ? value
+          : typeof value === 'number' || typeof value === 'boolean'
+            ? String(value)
+            : value == null
+              ? ''
+              : JSON.stringify(value);
+      // Quote if needed and escape quotes.
+      const needsQuotes = /[",\n]/.test(raw);
+      const escaped = raw.replaceAll('"', '""');
+      return needsQuotes ? `"${escaped}"` : escaped;
+    };
+    const body = rowsToExport
+      .map((r) => Object.values(r).map(csvCell).join(','))
+      .join('\n');
     const blob = new Blob([header + body], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -322,12 +420,19 @@ function PerformanceCard() {
           <p className="text-sm text-muted-foreground">Funnel, KPIs y reportes filtrables.</p>
         </div>
         <div className="flex gap-2 items-center">
+          <Button size="sm" variant={range === 'all' ? 'default' : 'outline'} onClick={() => setRange('all')}>Todo</Button>
           <Button size="sm" variant={range === '7d' ? 'default' : 'outline'} onClick={() => setRange('7d')}>7d</Button>
           <Button size="sm" variant={range === '30d' ? 'default' : 'outline'} onClick={() => setRange('30d')}>30d</Button>
-          <Tabs value={view} onValueChange={(v) => setView(v as any)}>
+          <Tabs
+            value={view}
+            onValueChange={(v) => {
+              if (v === 'kpi' || v === 'team_report' || v === 'lead_report') setView(v);
+            }}
+          >
             <TabsList>
               <TabsTrigger value="kpi">KPIs</TabsTrigger>
-              <TabsTrigger value="report">Lead Report</TabsTrigger>
+              <TabsTrigger value="team_report">Team Report</TabsTrigger>
+              <TabsTrigger value="lead_report">Lead Report</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -376,7 +481,10 @@ function PerformanceCard() {
                     <select
                       className="text-sm rounded-md border px-2 py-1"
                       value={filterMode}
-                      onChange={(e) => setFilterMode(e.target.value as any)}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === 'zone' || next === 'type') setFilterMode(next);
+                      }}
                     >
                       <option value="zone">Por zona</option>
                       <option value="type">Por tipo</option>
@@ -470,6 +578,27 @@ function PerformanceCard() {
                   if (typeof window !== 'undefined') window.localStorage.setItem('agenthub_team_digest', JSON.stringify(next));
                 }}
               />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  exportCsv(
+                    kpiRows.map((r) => ({
+                      agente: r.member?.firstName || r.agentId,
+                      leads: r.leads,
+                      pct_under_5m: r.resp,
+                      tta_seconds: r.tta,
+                      answer_pct: r.answerRate,
+                      appointments: r.appts,
+                      rating: r.rating,
+                    })),
+                    'team-kpis.csv',
+                  );
+                  onTrackRef.current('team.performance_export_csv', { range });
+                }}
+              >
+                Exportar CSV
+              </Button>
             </div>
 
             <div className="overflow-hidden rounded-md border">
@@ -485,15 +614,23 @@ function PerformanceCard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {kpiRows.map((row) => (
-                    <TableRow key={row.agentId}>
+                  {kpiRows.map((row) => {
+                    const isTop = row.agentId === topPerformerAgentId;
+                    return (
+                    <TableRow
+                      key={row.agentId}
+                      className={isTop ? 'border-l-4 border-primary/40 bg-primary/5' : undefined}
+                    >
                       <TableCell className="flex items-center gap-2">
                         <Avatar className="h-8 w-8">
-                          <AvatarFallback>{row.member?.firstName[0]}</AvatarFallback>
+                          <AvatarFallback>{row.member?.firstName?.[0] || 'A'}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-medium">{row.member?.firstName}</p>
-                          <p className="text-xs text-muted-foreground">{row.member?.role}</p>
+                          <p className="font-medium flex items-center gap-2">
+                            <span>{row.member?.firstName || row.agentId}</span>
+                            {isTop && <Badge variant="secondary">Top</Badge>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{row.member?.role || 'agent'}</p>
                         </div>
                       </TableCell>
                       <TableCell>{row.leads}</TableCell>
@@ -506,7 +643,8 @@ function PerformanceCard() {
                       </TableCell>
                       <TableCell>{row.appts}</TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                   {kpiRows.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">Sin datos de performance.</TableCell>
@@ -518,7 +656,174 @@ function PerformanceCard() {
           </>
         )}
 
-        {view === 'report' && (
+        {view === 'team_report' && (
+          <Card className="border">
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-sm">Team Report</CardTitle>
+                <p className="text-xs text-muted-foreground">Pipeline consolidado + desglose por agente.</p>
+              </div>
+              <div className="flex gap-2 items-center">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const rows = teamReport.rows.map((r) => {
+                      const member = members.find((m) => m.id === r.agentId);
+                      return {
+                        agente: member?.firstName || r.agentId,
+                        leads: r.leads,
+                        pct_under_5m: r.answeredUnder5mPct,
+                        answer_pct: r.answerRatePct,
+                        new: r.new,
+                        contacted: r.contacted,
+                        appointment: r.appointment_set,
+                        toured: r.toured,
+                        closed: r.closed,
+                        lost: r.closed_lost,
+                      };
+                    });
+                    exportCsv(rows, 'team-report.csv');
+                    onTrackRef.current('team.report_export_csv', { range });
+                  }}
+                >
+                  Exportar CSV
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                {TEAM_REPORT_STAGES.map((stage) => {
+                  const label =
+                    stage === 'appointment_set'
+                      ? 'Appointment'
+                      : stage === 'closed_lost'
+                        ? 'Lost'
+                        : stage.charAt(0).toUpperCase() + stage.slice(1);
+                  return (
+                    <div key={stage} className="rounded-md border bg-muted/20 p-2">
+                      <p className="text-[11px] text-muted-foreground">{label}</p>
+                      <p className="text-lg font-semibold">{teamReport.totals[stage]}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {teamLeadsTotal === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  No hay leads en este rango.
+                  <div className="mt-2">
+                    <Button size="sm" variant="outline" onClick={() => setRange('all')}>
+                      Ver todo el tiempo
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="overflow-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Agente</TableHead>
+                        <TableHead>Leads</TableHead>
+                        <TableHead>% &lt;5m</TableHead>
+                        <TableHead>New</TableHead>
+                        <TableHead>Contacted</TableHead>
+                        <TableHead>Appointment</TableHead>
+                        <TableHead>Toured</TableHead>
+                        <TableHead>Closed</TableHead>
+                        <TableHead>Lost</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {teamReport.rows.map((row) => {
+                        const member = members.find((m) => m.id === row.agentId);
+                        return (
+                          <TableRow
+                            key={row.agentId}
+                            className="cursor-pointer hover:bg-muted/40"
+                            onClick={() => {
+                              setDrilldownAgentId(row.agentId);
+                              onTrackRef.current('team.report_drilldown_opened', { agentId: row.agentId, range });
+                            }}
+                          >
+                            <TableCell className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback>{member?.firstName?.[0] || 'A'}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">{member?.firstName || row.agentId}</p>
+                                <p className="text-xs text-muted-foreground">{member?.role || 'agent'}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>{row.leads}</TableCell>
+                            <TableCell>
+                              <Badge variant={row.answeredUnder5mPct < 80 ? 'destructive' : 'secondary'}>
+                                {row.answeredUnder5mPct}%
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{row.new}</TableCell>
+                            <TableCell>{row.contacted}</TableCell>
+                            <TableCell>{row.appointment_set}</TableCell>
+                            <TableCell>{row.toured}</TableCell>
+                            <TableCell>{row.closed}</TableCell>
+                            <TableCell>{row.closed_lost}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              <Dialog
+                open={Boolean(drilldownAgentId)}
+                onOpenChange={(open) => {
+                  if (!open) setDrilldownAgentId(null);
+                }}
+              >
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Leads de {drilldownMember?.firstName || drilldownAgentId || 'agente'}</DialogTitle>
+                  </DialogHeader>
+                  {drilldownLeads.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sin leads asignados en este rango.</p>
+                  ) : (
+                    <div className="max-h-[60vh] overflow-auto rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Lead</TableHead>
+                            <TableHead>Etapa</TableHead>
+                            <TableHead className="text-right">Acción</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {drilldownLeads.map((lead) => (
+                            <TableRow key={lead.id}>
+                              <TableCell className="font-medium">
+                                {lead.firstName} {lead.lastName || ''}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{lead.stage.replace('_', ' ')}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button asChild size="sm" variant="outline">
+                                  <Link to={`/agents/leads/${lead.id}`}>Ver lead</Link>
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
+        )}
+
+        {view === 'lead_report' && (
           <Card className="border">
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -611,7 +916,11 @@ function AuditCard({ filter, onFilter, dateRange, onDateRange }: { filter: strin
             <option value="ownership">Liderazgo</option>
             <option value="bulk_reassign">Reasignaciones</option>
           </select>
-          <select className="border rounded-md px-2 py-2 text-sm" value={dateRange} onChange={(e) => onDateRange(e.target.value as any)}>
+          <select
+            className="border rounded-md px-2 py-2 text-sm"
+            value={dateRange}
+            onChange={(e) => onDateRange(e.target.value as 'all' | '7d' | '30d')}
+          >
             <option value="all">Todo tiempo</option>
             <option value="7d">Últimos 7d</option>
             <option value="30d">Últimos 30d</option>
@@ -657,7 +966,10 @@ export default function AgentTeam() {
   const routingState = useRoutingStore();
   const pausedAgents = routingState.paused;
   const [inviteEmail, setInviteEmail] = useState('');
-  const [newZone, setNewZone] = useState('');
+  const [inviteRole, setInviteRole] = useState<'agent' | 'admin'>('agent');
+  const [newLocationInput, setNewLocationInput] = useState('');
+  const [newLocations, setNewLocations] = useState<string[]>([]);
+  const [newLeadType, setNewLeadType] = useState<'any' | 'buy' | 'sell' | 'rent'>('any');
   const [newMin, setNewMin] = useState<number | ''>('');
   const [newMax, setNewMax] = useState<number | ''>('');
   const [newAssignee, setNewAssignee] = useState(members[0]?.id ?? mockAgent.id);
@@ -671,10 +983,12 @@ export default function AgentTeam() {
   const [fallback, setFallbackStrategy] = useState(getFallback());
   const [auditFilter, setAuditFilter] = useState<string>('all');
   const [auditDateRange, setAuditDateRange] = useState<'all' | '7d' | '30d'>('all');
-  const [reminderConfig, setReminderConfig] = useState<{ enabled: boolean; minutes: number; stage: LeadStage }>(() => {
-    if (typeof window === 'undefined') return { enabled: false, minutes: 30, stage: 'new' };
-    return JSON.parse(window.localStorage.getItem('agenthub_team_reminders') || '{"enabled":false,"minutes":30,"stage":"new"}');
-  });
+  const reminderState = useTeamReminderStore();
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [reminderStage, setReminderStage] = useState<LeadStage>('new');
+  const [reminderMinutes, setReminderMinutes] = useState<number>(30);
   const [activeSection, setActiveSection] = useState<'members' | 'routing' | 'performance' | 'audit'>('members');
   const [showTop, setShowTop] = useState(false);
   const currentUser = getCurrentUser();
@@ -699,27 +1013,46 @@ export default function AgentTeam() {
     setRoutingAlertFlag(getRoutingAlert());
   }, [routingState.rules, routingState.paused]);
 
-  // Recordatorios automáticos (mock)
+  const reminderRulesRef = useRef(reminderState.rules);
+  useEffect(() => {
+    reminderRulesRef.current = reminderState.rules;
+  }, [reminderState.rules]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const key = 'agenthub_team_reminders';
-    window.localStorage.setItem(key, JSON.stringify(reminderConfig));
-    if (!reminderConfig.enabled) return;
     const interval = setInterval(() => {
-      const stuckLead = listLeads().find((l) => l.stage === reminderConfig.stage);
-      if (stuckLead) {
-        addNotification({
-          type: 'task',
-          title: 'Recordatorio de equipo',
-          body: `${stuckLead.firstName} lleva tiempo en ${reminderConfig.stage}`,
-          actionUrl: `/agents/leads/${stuckLead.id}`,
-        });
-        addAuditEvent({ action: 'team_reminder_triggered', actor: currentUser.id, domain: 'team', payload: { leadId: stuckLead.id } });
-        toast({ title: 'Recordatorio enviado', description: `${stuckLead.firstName} necesita atención` });
+      const nowMs = Date.now();
+      const rules = reminderRulesRef.current;
+      if (!rules.length) return;
+
+      const leads = listLeads();
+      for (const rule of rules) {
+        if (!rule.enabled) continue;
+        for (const lead of leads) {
+          if (!shouldTriggerReminder(rule, lead, nowMs)) continue;
+          if (!canSendReminder(rule.id, lead.id, nowMs, 24)) continue;
+
+          addNotification({
+            type: 'task',
+            title: 'Recordatorio de equipo',
+            body: `${lead.firstName} lleva >${rule.minutes}m en ${rule.stage.replace('_', ' ')}`,
+            actionUrl: `/agents/leads/${lead.id}`,
+          });
+          markReminderSent(rule.id, lead.id, new Date(nowMs));
+          addAuditEvent({
+            action: 'team_reminder_triggered',
+            actor: currentUser.id,
+            domain: 'team',
+            payload: { ruleId: rule.id, leadId: lead.id, stage: rule.stage, minutes: rule.minutes },
+          });
+          track('team.reminder_triggered', { ruleId: rule.id, leadId: lead.id });
+          toast({ title: 'Recordatorio enviado', description: `${lead.firstName} necesita atención` });
+          return; // avoid spamming: send max 1 per tick
+        }
       }
-    }, 1000 * 15); // cada 15s en mock
+    }, 1000 * 30);
     return () => clearInterval(interval);
-  }, [reminderConfig, currentUser.id]);
+  }, [currentUser.id]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -771,27 +1104,29 @@ export default function AgentTeam() {
     rows.forEach((a, i) => {
       rows.forEach((b, j) => {
         if (i >= j) return;
-        if (a.zone.toLowerCase() === b.zone.toLowerCase()) {
-          const aMin = a.minPrice ?? -Infinity;
-          const aMax = a.maxPrice ?? Infinity;
-          const bMin = b.minPrice ?? -Infinity;
-          const bMax = b.maxPrice ?? Infinity;
-          const overlap = aMin <= bMax && bMin <= aMax;
-          if (overlap) {
-            overlaps.add(a.id);
-            overlaps.add(b.id);
-          }
-        }
+        const aLoc = (a.locations || []).map((l) => l.toLowerCase());
+        const bLoc = (b.locations || []).map((l) => l.toLowerCase());
+        const locOverlap =
+          aLoc.length === 0 || bLoc.length === 0 ? true : aLoc.some((l) => bLoc.includes(l));
+        if (!locOverlap) return;
+
+        const typeOverlap =
+          a.leadType === 'any' || b.leadType === 'any' || a.leadType === b.leadType;
+        if (!typeOverlap) return;
+
+        const aMin = a.minPrice ?? -Infinity;
+        const aMax = a.maxPrice ?? Infinity;
+        const bMin = b.minPrice ?? -Infinity;
+        const bMax = b.maxPrice ?? Infinity;
+        const priceOverlap = aMin <= bMax && bMin <= aMax;
+        if (!priceOverlap) return;
+
+        overlaps.add(a.id);
+        overlaps.add(b.id);
       });
     });
     return overlaps;
   }, [routingState.rules]);
-  const track = (event: string, properties?: Record<string, unknown>) => {
-    fetch('/api/analytics', {
-      method: 'POST',
-      body: JSON.stringify({ event, properties }),
-    }).catch(() => {});
-  };
 
   const scrollToSection = (id: 'members' | 'routing' | 'performance' | 'audit') => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -838,12 +1173,13 @@ export default function AgentTeam() {
     if (!inviteEmail) return;
     setIsSubmittingInvite(true);
     try {
-      const inv = addInvite(inviteEmail, 'agent');
+      const inv = addInvite(inviteEmail, inviteRole);
       const link = `${window.location.origin}/invite/${inv.token}`;
       navigator.clipboard.writeText(link).catch(() => {});
       toast({ title: 'Invitación enviada', description: `Copiado el enlace: ${link}` });
-      track('team.invite_sent', { email: inviteEmail, token: inv.token });
+      track('team.invite_sent', { email: inviteEmail, role: inviteRole, token: inv.token });
       setInviteEmail('');
+      setInviteRole('agent');
     } catch (e) {
       toast({ title: 'No se pudo enviar la invitación', variant: 'destructive' });
     } finally {
@@ -851,7 +1187,7 @@ export default function AgentTeam() {
     }
   };
 
-  const handleRoleChange = (id: string, role: 'owner' | 'admin' | 'agent' | 'assistant' | 'broker') => {
+  const handleRoleChange = (id: string, role: TeamRole) => {
     if (isLastAdmin(id) && role !== 'owner' && role !== 'admin') {
       const candidate = prompt('Eres el último owner/admin. Ingresa ID del nuevo owner:');
       if (!candidate) return;
@@ -895,18 +1231,42 @@ export default function AgentTeam() {
     toast({ title: 'Miembro eliminado', description: `Leads reasignados a ${reassignee}` });
   };
 
+  const addLocationChip = (value?: string) => {
+    const next = (value ?? newLocationInput).trim();
+    if (!next) return;
+    setNewLocations((prev) => {
+      const exists = prev.some((l) => l.toLowerCase() === next.toLowerCase());
+      return exists ? prev : [...prev, next];
+    });
+    setNewLocationInput('');
+  };
+
+  const removeLocationChip = (value: string) => {
+    setNewLocations((prev) => prev.filter((l) => l !== value));
+  };
+
   const addRoutingRule = () => {
-    if (!newZone) return;
+    if (newLocations.length === 0) return;
     addRule({
-      zone: newZone,
+      locations: newLocations,
       minPrice: newMin === '' ? undefined : Number(newMin),
       maxPrice: newMax === '' ? undefined : Number(newMax),
+      leadType: newLeadType,
       assignToAgentId: newAssignee,
       assignees: strategyRR ? (assignees.length ? assignees : [newAssignee]) : undefined,
       strategy: strategyRR ? 'round_robin' : 'single',
     });
-    track('team.routing_rule_created', { zone: newZone, min: newMin || undefined, max: newMax || undefined, assignee: newAssignee });
-    setNewZone('');
+    track('team.routing_rule_created', {
+      locationsCount: newLocations.length,
+      leadType: newLeadType,
+      min: newMin || undefined,
+      max: newMax || undefined,
+      assignee: newAssignee,
+      strategy: strategyRR ? 'round_robin' : 'single',
+    });
+    setNewLocationInput('');
+    setNewLocations([]);
+    setNewLeadType('any');
     setNewMin('');
     setNewMax('');
     setAssignees([]);
@@ -933,7 +1293,14 @@ export default function AgentTeam() {
           <p className="text-muted-foreground">Miembros, ruteo, performance y auditoría en una vista.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="default" size="sm" onClick={() => { scrollToSection('members'); document.querySelector('input[placeholder=\"email@equipo.com\"]')?.focus(); }}>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => {
+              scrollToSection('members');
+              document.querySelector('input[placeholder="email@equipo.com"]')?.focus();
+            }}
+          >
             <Users2 className="h-4 w-4 mr-1" /> Invitar
           </Button>
           <Button variant="outline" size="sm" onClick={() => { setWizardOpen(true); setWizardStep(1); scrollToSection('routing'); }}>
@@ -978,12 +1345,22 @@ export default function AgentTeam() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <Input
-                  placeholder="email@equipo.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  className="sm:w-64"
-                />
+                <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                  <Input
+                    placeholder="email@equipo.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="sm:w-64"
+                  />
+                  <select
+                    className="text-sm rounded-md border px-2 py-2"
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as 'agent' | 'admin')}
+                  >
+                    <option value="agent">Rol: Agente</option>
+                    <option value="admin">Rol: Admin</option>
+                  </select>
+                </div>
                 <Button onClick={handleInvite} disabled={!inviteEmail || isSubmittingInvite} className="gap-2">
                   {isSubmittingInvite && <Loader2 className="h-4 w-4 animate-spin" />}
                   Enviar y copiar enlace
@@ -1009,7 +1386,7 @@ export default function AgentTeam() {
                   <select
                     className="text-sm rounded-md border px-2 py-1"
                     value={member.role}
-                    onChange={(e) => handleRoleChange(member.id, e.target.value as any)}
+                    onChange={(e) => handleRoleChange(member.id, e.target.value as TeamRole)}
                   >
                     <option value="owner">Owner</option>
                     <option value="admin">Admin</option>
@@ -1046,7 +1423,11 @@ export default function AgentTeam() {
                   >
                     <div>
                       <p className="font-medium text-sm">{invite.email}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{invite.role}</p>
+                      <div className="mt-1">
+                        <Badge variant="outline" className="capitalize">
+                          {invite.role}
+                        </Badge>
+                      </div>
                       <p className="text-[11px] text-muted-foreground">
                         Expira {invite.status === 'expired' ? '—' : formatDistanceToNow(new Date(invite.expiresAt), { addSuffix: true })}
                       </p>
@@ -1056,17 +1437,47 @@ export default function AgentTeam() {
                         {invite.status === 'pending' ? 'Activa' : invite.status === 'expired' ? 'Expirada' : 'Usada'}
                       </Badge>
                       {invite.status === 'pending' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            acceptInvite(invite.id);
-                            track('team.invite_accepted', { email: invite.email });
-                            toast({ title: 'Invitación aceptada', description: `${invite.email} ahora es miembro.` });
-                          }}
-                        >
-                          Marcar aceptada
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              acceptInvite(invite.id);
+                              track('team.invite_accepted', { email: invite.email, role: invite.role });
+                              toast({ title: 'Invitación aceptada', description: `${invite.email} ahora es miembro.` });
+                            }}
+                          >
+                            Marcar aceptada
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost">
+                                Cancelar
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Cancelar invitación</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Esto invalidará el enlace para <span className="font-medium">{invite.email}</span>.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Volver</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => {
+                                    removeInvite(invite.id);
+                                    addAuditEvent({ action: 'invite_cancelled', actor: currentUser.id, domain: 'team', payload: { inviteId: invite.id, email: invite.email } });
+                                    track('team.invite_cancelled', { inviteId: invite.id, email: invite.email, role: invite.role });
+                                    toast({ title: 'Invitación cancelada', description: 'El enlace quedó invalidado.' });
+                                  }}
+                                >
+                                  Cancelar invitación
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </>
                       )}
                       {invite.status === 'expired' && (
                         <Button size="sm" variant="ghost" onClick={() => {
@@ -1138,21 +1549,72 @@ export default function AgentTeam() {
                   <DialogHeader>
                     <DialogTitle>Crear regla de ruteo</DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Badge variant={wizardStep >= 1 ? 'default' : 'outline'}>1</Badge> Zona/Precio
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant={wizardStep >= 1 ? 'default' : 'outline'}>1</Badge> Ubicaciones/Tipo/Precio
                       <Badge variant={wizardStep >= 2 ? 'default' : 'outline'}>2</Badge> Asignación
                       <Badge variant={wizardStep >= 3 ? 'default' : 'outline'}>3</Badge> Revisión
                     </div>
                     {wizardStep === 1 && (
                       <div className="space-y-3">
-                        <Input placeholder="Zona (ej. Polanco)" value={newZone} onChange={(e) => setNewZone(e.target.value)} />
-                        <div className="grid sm:grid-cols-2 gap-2">
+                        <div className="space-y-2">
+                          <p className="text-sm text-muted-foreground">Ubicaciones (Zonas/ZIPs)</p>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Ej: Polanco o 11560"
+                              value={newLocationInput}
+                              onChange={(e) => setNewLocationInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  addLocationChip();
+                                }
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => addLocationChip()}
+                              disabled={!newLocationInput.trim()}
+                            >
+                              Agregar
+                            </Button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {newLocations.map((loc) => (
+                              <Badge key={loc} variant="secondary" className="gap-1 pr-1">
+                                <span className="max-w-[280px] truncate">{loc}</span>
+                                <button
+                                  type="button"
+                                  className="ml-1 rounded hover:bg-muted/60 p-0.5"
+                                  onClick={() => removeLocationChip(loc)}
+                                  aria-label={`Quitar ${loc}`}
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                            {newLocations.length === 0 && (
+                              <p className="text-xs text-muted-foreground">Agrega al menos una ubicación.</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid sm:grid-cols-3 gap-2">
+                          <select
+                            className="rounded-md border px-3 py-2 text-sm"
+                            value={newLeadType}
+                            onChange={(e) => setNewLeadType(e.target.value as 'any' | 'buy' | 'sell' | 'rent')}
+                          >
+                            <option value="any">Tipo: Cualquiera</option>
+                            <option value="buy">Tipo: Comprador</option>
+                            <option value="sell">Tipo: Vendedor</option>
+                            <option value="rent">Tipo: Renta</option>
+                          </select>
                           <Input type="number" placeholder="Precio mín" value={newMin} onChange={(e) => setNewMin(e.target.value ? Number(e.target.value) : '')} />
                           <Input type="number" placeholder="Precio máx" value={newMax} onChange={(e) => setNewMax(e.target.value ? Number(e.target.value) : '')} />
                         </div>
                         <div className="flex justify-end">
-                          <Button onClick={() => setWizardStep(2)} disabled={!newZone}>Continuar</Button>
+                          <Button onClick={() => setWizardStep(2)} disabled={newLocations.length === 0}>Continuar</Button>
                         </div>
                       </div>
                     )}
@@ -1199,14 +1661,15 @@ export default function AgentTeam() {
                       <div className="space-y-3">
                         <p className="text-sm text-muted-foreground">Revisión</p>
                         <div className="rounded-md border p-3 text-sm bg-muted/30">
-                          <p><strong>Zona:</strong> {newZone || '—'}</p>
+                          <p><strong>Ubicaciones:</strong> {newLocations.length ? newLocations.join(', ') : '—'}</p>
+                          <p><strong>Tipo:</strong> {newLeadType === 'any' ? 'Cualquiera' : newLeadType}</p>
                           <p><strong>Precio:</strong> {newMin || '—'} - {newMax || '—'}</p>
                           <p><strong>Asignación:</strong> {strategyRR ? assignees.join(', ') || newAssignee : newAssignee}</p>
                           <p><strong>Estrategia:</strong> {strategyRR ? 'Round robin' : 'Single'}</p>
                         </div>
                         <div className="flex justify-between">
                           <Button variant="outline" onClick={() => setWizardStep(2)}>Atrás</Button>
-                          <Button onClick={addRoutingRule} disabled={!newZone}>Crear y activar</Button>
+                          <Button onClick={addRoutingRule} disabled={newLocations.length === 0}>Crear y activar</Button>
                         </div>
                       </div>
                     )}
@@ -1218,7 +1681,7 @@ export default function AgentTeam() {
               {conflicts.size > 0 && (
                 <div className="p-3 rounded-md border border-warning/50 bg-warning/10 text-sm flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-warning" />
-                  Conflicto: reglas con misma zona y rango se solapan. Ajusta orden o rango.
+                  Conflicto: reglas con ubicaciones/tipo y rango se solapan. Ajusta orden, tipo o precio.
                 </div>
               )}
               <div className="mt-3 overflow-hidden rounded-md border">
@@ -1235,7 +1698,8 @@ export default function AgentTeam() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Orden</TableHead>
-                          <TableHead>Zona</TableHead>
+                          <TableHead>Ubicaciones</TableHead>
+                          <TableHead>Tipo</TableHead>
                           <TableHead>Precio</TableHead>
                           <TableHead>Asignación</TableHead>
                           <TableHead>TTA (s)</TableHead>
@@ -1246,7 +1710,7 @@ export default function AgentTeam() {
                       <TableBody>
                         {routingState.rules.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={7} className="text-sm text-muted-foreground text-center">Sin reglas activas</TableCell>
+                            <TableCell colSpan={8} className="text-sm text-muted-foreground text-center">Sin reglas activas</TableCell>
                           </TableRow>
                         )}
                         {routingState.rules.map((rule, idx) => (
@@ -1304,43 +1768,197 @@ export default function AgentTeam() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Recordatorios automáticos</CardTitle>
-                <p className="text-sm text-muted-foreground">Leads estancados → notificación al equipo.</p>
+                <p className="text-sm text-muted-foreground">Leads estancados → notificación al equipo (cadencia 24h).</p>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={reminderConfig.enabled}
-                    onChange={(e) => setReminderConfig({ ...reminderConfig, enabled: e.target.checked })}
-                  />
-                  <span>Activar recordatorios</span>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm text-muted-foreground">Configura múltiples reglas (por etapa + umbral).</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingReminderId(null);
+                      setReminderEnabled(true);
+                      setReminderStage('new');
+                      setReminderMinutes(30);
+                      setReminderDialogOpen(true);
+                    }}
+                  >
+                    Crear regla
+                  </Button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Minutos en etapa</p>
-                    <Input
-                      type="number"
-                      min={5}
-                      value={reminderConfig.minutes}
-                      onChange={(e) => setReminderConfig({ ...reminderConfig, minutes: Number(e.target.value) })}
-                    />
+
+                {reminderState.rules.length === 0 ? (
+                  <div className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                    No hay reglas. Crea la primera.
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Etapa</p>
-                    <select
-                      className="rounded-md border px-2 py-2 text-sm w-full"
-                      value={reminderConfig.stage}
-                      onChange={(e) => setReminderConfig({ ...reminderConfig, stage: e.target.value as LeadStage })}
-                    >
-                      <option value="new">New</option>
-                      <option value="contacted">Contacted</option>
-                      <option value="appointment_set">Appointment</option>
-                    </select>
+                ) : (
+                  <div className="overflow-hidden rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-16">Activa</TableHead>
+                          <TableHead>Etapa</TableHead>
+                          <TableHead className="w-28">Minutos</TableHead>
+                          <TableHead className="w-32">Último envío</TableHead>
+                          <TableHead className="text-right w-40">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {reminderState.rules.map((rule) => {
+                          const sentForRule = reminderState.sent[rule.id] || {};
+                          const lastSentMs = Object.values(sentForRule).reduce((max, iso) => {
+                            const ms = new Date(iso).getTime();
+                            return Number.isNaN(ms) ? max : Math.max(max, ms);
+                          }, 0);
+                          const lastSentLabel = lastSentMs
+                            ? formatDistanceToNow(new Date(lastSentMs), { addSuffix: true })
+                            : '—';
+                          return (
+                            <TableRow key={rule.id}>
+                              <TableCell>
+                                <Switch
+                                  checked={rule.enabled}
+                                  onCheckedChange={(checked) => {
+                                    updateReminderRule(rule.id, { enabled: checked });
+                                    track('team.reminder_rule_toggled', { ruleId: rule.id, enabled: checked });
+                                    toast({ title: checked ? 'Regla activada' : 'Regla pausada' });
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{rule.stage.replace('_', ' ')}</Badge>
+                              </TableCell>
+                              <TableCell>{rule.minutes}m</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{lastSentLabel}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setEditingReminderId(rule.id);
+                                      setReminderEnabled(rule.enabled);
+                                      setReminderStage(rule.stage);
+                                      setReminderMinutes(rule.minutes);
+                                      setReminderDialogOpen(true);
+                                    }}
+                                  >
+                                    Editar
+                                  </Button>
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button size="sm" variant="ghost">
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Eliminar regla</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Esto eliminará la regla de recordatorio. No afecta leads existentes.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Volver</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => {
+                                            deleteReminderRule(rule.id);
+                                            toast({ title: 'Regla eliminada' });
+                                          }}
+                                        >
+                                          Eliminar
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {`Preview: "Lead en ${reminderConfig.stage} por ${reminderConfig.minutes}m".`}
-                </p>
+                )}
+
+                <Dialog open={reminderDialogOpen} onOpenChange={setReminderDialogOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{editingReminderId ? 'Editar regla' : 'Crear regla'}</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">Activa</p>
+                          <p className="text-xs text-muted-foreground">Cadencia fija: 24h por lead.</p>
+                        </div>
+                        <Switch checked={reminderEnabled} onCheckedChange={setReminderEnabled} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Etapa</p>
+                          <select
+                            className="rounded-md border px-2 py-2 text-sm w-full"
+                            value={reminderStage}
+                            onChange={(e) => setReminderStage(e.target.value as LeadStage)}
+                          >
+                            <option value="new">New</option>
+                            <option value="contacted">Contacted</option>
+                            <option value="appointment_set">Appointment</option>
+                            <option value="toured">Toured</option>
+                            <option value="closed">Closed</option>
+                            <option value="closed_lost">Lost</option>
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Minutos en etapa</p>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={reminderMinutes}
+                            onChange={(e) => setReminderMinutes(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {`Preview: "Lead en ${reminderStage} por ${reminderMinutes}m".`}
+                      </p>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setReminderDialogOpen(false);
+                            setEditingReminderId(null);
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            const minutes = Math.max(1, Math.floor(reminderMinutes));
+                            if (!Number.isFinite(minutes)) {
+                              toast({ title: 'Minutos inválidos', variant: 'destructive' });
+                              return;
+                            }
+                            if (editingReminderId) {
+                              updateReminderRule(editingReminderId, { enabled: reminderEnabled, stage: reminderStage, minutes });
+                              toast({ title: 'Regla actualizada' });
+                            } else {
+                              const rule = addReminderRule({ enabled: reminderEnabled, stage: reminderStage, minutes });
+                              track('team.reminder_rule_created', { ruleId: rule.id, stage: rule.stage, minutes: rule.minutes });
+                              toast({ title: 'Regla creada', description: 'Se aplicará en background.' });
+                            }
+                            setReminderDialogOpen(false);
+                            setEditingReminderId(null);
+                          }}
+                        >
+                          Guardar
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </CardContent>
             </Card>
           </div>
@@ -1349,7 +1967,7 @@ export default function AgentTeam() {
 
       {/* Performance */}
       <section id="performance" className="scroll-mt-24 space-y-4">
-        <PerformanceCard />
+        <PerformanceCard onTrack={track} members={teamMembers} />
       </section>
 
       {/* Auditoría */}

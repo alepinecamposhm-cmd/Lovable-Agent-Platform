@@ -17,8 +17,12 @@ const defaults: IntegrationState[] = [
   { id: 'showingtime', name: 'ShowingTime', description: 'Sincroniza citas y disponibilidad.', status: 'disconnected' },
 ];
 
-function hydrate(raw: any): IntegrationState {
-  return { ...raw, lastSyncedAt: raw.lastSyncedAt ? new Date(raw.lastSyncedAt) : undefined };
+function hydrate(raw: unknown): IntegrationState {
+  const item = raw as Record<string, unknown>;
+  return {
+    ...(raw as Omit<IntegrationState, 'lastSyncedAt'>),
+    lastSyncedAt: typeof item.lastSyncedAt === 'string' ? new Date(item.lastSyncedAt) : undefined,
+  };
 }
 
 function load(): IntegrationState[] {

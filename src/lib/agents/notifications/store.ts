@@ -84,11 +84,15 @@ function load(): Notification[] {
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (!raw) return seed;
   try {
-    const parsed: Notification[] = JSON.parse(raw).map((n: any) => ({
-      ...n,
-      createdAt: n.createdAt ? parseISO(n.createdAt) : new Date(),
-    }));
-    return parsed;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return seed;
+    return parsed.map((nRaw) => {
+      const n = nRaw as Record<string, unknown>;
+      return {
+        ...(nRaw as Omit<Notification, 'createdAt'>),
+        createdAt: typeof n.createdAt === 'string' ? parseISO(n.createdAt) : new Date(),
+      };
+    });
   } catch (e) {
     console.error('Failed to parse notifications', e);
     return seed;
@@ -200,11 +204,15 @@ export function isQuietHoursNow(date = new Date()): boolean {
 }
 
 // Cache to prevent infinite re-renders (useSyncExternalStore needs stable object references)
-let cachedSnapshot: {
+type NotificationSnapshot = {
   notifications: Notification[];
   unread: number;
   quietHours: QuietHoursState;
-} | null = null;
+  _rawNotifications: Notification[];
+  _rawQuietHours: QuietHoursState;
+};
+
+let cachedSnapshot: NotificationSnapshot | null = null;
 
 function getSnapshot() {
   const newNotifications = list();
@@ -214,9 +222,9 @@ function getSnapshot() {
   // Only create new object if data actually changed (check raw module-level state)
   if (
     !cachedSnapshot ||
-    notifications !== (cachedSnapshot as any)._rawNotifications || // compare raw array reference
+    notifications !== cachedSnapshot._rawNotifications || // compare raw array reference
     cachedSnapshot.unread !== newUnread ||
-    quietHours !== (cachedSnapshot as any)._rawQuietHours // compare raw object reference
+    quietHours !== cachedSnapshot._rawQuietHours // compare raw object reference
   ) {
     cachedSnapshot = {
       notifications: newNotifications,
@@ -224,7 +232,7 @@ function getSnapshot() {
       quietHours: newQuietHours,
       _rawNotifications: notifications, // store raw references for comparison
       _rawQuietHours: quietHours,
-    } as any;
+    };
   }
 
   return cachedSnapshot;

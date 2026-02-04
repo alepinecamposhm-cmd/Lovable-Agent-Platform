@@ -34,7 +34,7 @@ import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { useConsumeCredits, useCreditAccount } from '@/lib/credits/query';
 import { InsufficientCreditsDialog } from '@/components/agents/credits/InsufficientCreditsDialog';
-import type { Listing, ListingStatus, VerificationStatus } from '@/types/agents';
+import type { Lead, Listing, ListingStatus, VerificationStatus } from '@/types/agents';
 
 const statusConfig: Record<ListingStatus, { label: string; color: string; pill: string }> = {
   draft: { label: 'Borrador', color: 'text-muted-foreground', pill: 'bg-muted text-muted-foreground' },
@@ -75,6 +75,33 @@ export default function AgentListingDetail() {
   const [openHouseTime, setOpenHouseTime] = useState('12:00');
   const [scheduling, setScheduling] = useState(false);
 
+  const engagement = useMemo(() => {
+    if (!listing) return [];
+    return [
+      { label: 'Vistas', icon: Eye, value: listing.viewCount },
+      { label: 'Guardados', icon: Heart, value: listing.saveCount },
+      { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
+    ];
+  }, [listing]);
+
+  useEffect(() => {
+    try {
+      if (!listing) {
+        setActivityState('empty');
+        return;
+      }
+      const events = listListingActivities(listing.id);
+      if (!events.length) {
+        setActivityState('empty');
+      } else {
+        setActivityFeed(events);
+        setActivityState('success');
+      }
+    } catch {
+      setActivityState('error');
+    }
+  }, [listing]);
+
   if (!listing) {
     return (
       <div className="space-y-4">
@@ -90,15 +117,6 @@ export default function AgentListingDetail() {
       </div>
     );
   }
-
-  const engagement = useMemo(
-    () => [
-      { label: 'Vistas', icon: Eye, value: listing.viewCount },
-      { label: 'Guardados', icon: Heart, value: listing.saveCount },
-      { label: 'Consultas', icon: MessageSquare, value: listing.inquiryCount },
-    ],
-    [listing]
-  );
 
   const handleVerify = async () => {
     const rule = creditAccount?.rules.find((r) => r.action === 'verification_request');
@@ -162,7 +180,7 @@ export default function AgentListingDetail() {
       const [hours, minutes] = openHouseTime.split(':').map(Number);
       const date = new Date(openHouseDate);
       date.setHours(hours || 12, minutes || 0, 0, 0);
-      const pseudoLead = {
+      const pseudoLead: Lead = {
         id: `open-house-${listing.id}`,
         firstName: 'Open House',
         lastName: listing.address.street,
@@ -178,7 +196,7 @@ export default function AgentListingDetail() {
         scheduledAt: date,
         duration: 90,
         leadId: pseudoLead.id,
-        lead: pseudoLead as any,
+        lead: pseudoLead,
         agentId: listing.agentId,
         listingId: listing.id,
         listing,
@@ -233,24 +251,6 @@ export default function AgentListingDetail() {
     toast({ title: 'Cita creada (mock)', description: 'Mostrada en Calendario.' });
     window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'integration.action_start', integration: 'showingtime', listingId: listing.id } }));
   };
-
-  useEffect(() => {
-    try {
-      if (!listing) {
-        setActivityState('empty');
-        return;
-      }
-      const events = listListingActivities(listing.id);
-      if (!events.length) {
-        setActivityState('empty');
-      } else {
-        setActivityFeed(events);
-        setActivityState('success');
-      }
-    } catch (e) {
-      setActivityState('error');
-    }
-  }, [listing?.id]);
 
   return (
     <>

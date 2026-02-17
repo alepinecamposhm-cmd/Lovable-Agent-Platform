@@ -10,6 +10,7 @@ import { AgentErrorBoundary } from "./AgentErrorBoundary";
 
 // Agent Platform
 import { AgentLayout } from "./components/agents/layout/AgentLayout";
+import { LovableAgentLayout } from "./components/lovable/layout/LovableAgentLayout";
 import AgentOverview from "./pages/agents/overview";
 import AgentLeads from "./pages/agents/leads";
 import AgentLeadDetail from "./pages/agents/lead-detail";
@@ -26,6 +27,8 @@ import AgentRoiReport from "./pages/agents/reports-roi";
 import AgentLeadReport from "./pages/agents/reports-leads";
 import AgentTeamReport from "./pages/agents/reports-team";
 import AgentTeam from "./pages/agents/team";
+import AgentTeamV2 from "./pages/agents/team-v2";
+import AgentTeamMemberDetailV2 from "./pages/agents/team-member-detail-v2";
 import AgentSettings from "./pages/agents/settings";
 import AgentRoadmap from "./pages/agents/roadmap";
 import AgentNotifications from "./pages/agents/notifications";
@@ -91,6 +94,13 @@ const App = () => {
               <Route path="open-house/visitors" element={<AgentOpenHouseVisitors />} />
               <Route path="settings" element={<AgentSettings />} />
               <Route path="audit" element={<AgentAudit />} />
+            </Route>
+
+
+            {/* Lovable reference layout (v2) – start with Equipo */}
+            <Route path="/agents/team-v2" element={<AgentErrorBoundary><LovableAgentLayout /></AgentErrorBoundary>}>
+              <Route index element={<AgentTeamV2 />} />
+              <Route path="member/:id" element={<AgentTeamMemberDetailV2 />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

@@ -54,6 +54,11 @@ const secondaryNavItems = [
   { title: 'Audit', url: '/agents/audit', icon: BarChart3 },
 ];
 
+const comparisonNavItems = [
+  { title: 'Equipo (v1)', url: '/agents/team', icon: UsersRound },
+  { title: 'Equipo (v2)', url: '/agents/team-v2', icon: UsersRound },
+];
+
 const settingsItem = { title: 'Configuración', url: '/agents/settings', icon: Settings };
 
 export function AgentSidebar() {
@@ -63,7 +68,15 @@ export function AgentSidebar() {
   const { pending: pendingTasks } = useTaskStore();
   const currentUser = getCurrentUser();
 
-  const isActive = (url: string) => location.pathname.startsWith(url);
+  const isActive = (url: string) => {
+    if (url === '/agents/team') {
+      return location.pathname === '/agents/team' || location.pathname.startsWith('/agents/team/');
+    }
+    if (url === '/agents/team-v2') {
+      return location.pathname === '/agents/team-v2' || location.pathname.startsWith('/agents/team-v2/');
+    }
+    return location.pathname.startsWith(url);
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -193,6 +206,38 @@ export function AgentSidebar() {
                 </SidebarMenuItem>
                   );
                 })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
+            Comparación
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {comparisonNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    tooltip={isCollapsed ? item.title : undefined}
+                  >
+                    <Link
+                      to={item.url}
+                      className={cn(
+                        'flex items-center gap-3 rounded-lg px-3 py-2 transition-all',
+                        isActive(item.url)
+                          ? 'bg-sidebar-accent text-sidebar-primary'
+                          : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                      )}
+                    >
+                      <item.icon className="h-5 w-5 shrink-0" />
+                      {!isCollapsed && <span>{item.title}</span>}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

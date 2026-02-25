@@ -46,9 +46,13 @@ export interface TeamPerformanceData {
 
 interface PerformanceTableProps {
   data: TeamPerformanceData[];
+  totalAgents?: number;
+  onCompare?: () => void;
+  compareDisabled?: boolean;
+  highlight?: boolean;
 }
 
-export function PerformanceTable({ data }: PerformanceTableProps) {
+export function PerformanceTable({ data, totalAgents, onCompare, compareDisabled, highlight }: PerformanceTableProps) {
   const navigate = useNavigate();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'score', desc: true }]);
   const [period, setPeriod] = useState<'month' | 'lastMonth' | 'year'>('month');
@@ -238,11 +242,15 @@ export function PerformanceTable({ data }: PerformanceTableProps) {
     navigate(`/agents/team/member/${memberId}`);
   };
 
+  const shownCount = data.length;
+  const total = totalAgents ?? data.length;
+  const missing = Math.max(total - shownCount, 0);
+
   return (
-    <Card>
+    <Card className={cn("transition duration-300", highlight ? "ring-2 ring-primary/30" : undefined)}>
       <CardHeader>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
+          <div className="space-y-1">
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5" />
               Performance del Equipo
@@ -250,8 +258,20 @@ export function PerformanceTable({ data }: PerformanceTableProps) {
             <CardDescription>
               Métricas de desempeño de cada miembro del equipo
             </CardDescription>
+            <p className="text-xs text-muted-foreground">
+              Mostrando {shownCount} de {total}
+              {missing > 0 && <span className="ml-1">(faltan métricas para {missing})</span>}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <Button
+              variant="default"
+              onClick={onCompare}
+              disabled={compareDisabled}
+            >
+              <ArrowUpDown className="mr-2 h-4 w-4" />
+              Comparar
+            </Button>
             <Select value={period} onValueChange={(v: 'month' | 'lastMonth' | 'year') => setPeriod(v)}>
               <SelectTrigger className="w-[160px]">
                 <SelectValue />

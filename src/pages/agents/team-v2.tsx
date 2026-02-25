@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
@@ -18,7 +18,6 @@ import {
   Activity,
   ArrowLeftRight,
   StickyNote,
-  GitCompareArrows,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -77,6 +76,7 @@ import { TeamLeadsOverview } from '@/components/team/TeamLeadsOverview';
 import { TeamPlanLimitBadge } from '@/components/team/TeamPlanLimitBadge';
 import { BulkActionToolbar } from '@/components/team/BulkActionToolbar';
 import { TeamOnboardingChecklist } from '@/components/team/TeamOnboardingChecklist';
+import { TeamWorkloadSummary } from "@/components/team/TeamWorkloadSummary";
 import { WorkloadIndicator } from '@/components/team/WorkloadIndicator';
 import { getNoteForMember } from '@/components/team/MemberNotesCard';
 import { ScheduleCompactDots } from '@/components/team/AgentScheduleGrid';
@@ -133,6 +133,51 @@ const initialTeamAgents = [
     leadsThisMonth: 0,
     conversionRate: 15,
   },
+
+  {
+    id: 'agent-004',
+    name: 'Sofía Torres',
+    email: 'sofia.torres@inmobiliaria.mx',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sofia',
+    role: 'agente' as TeamMemberRole,
+    status: 'activo' as TeamMemberStatus,
+    leadRoutingWeight: 0,
+    leadsThisMonth: 6,
+    conversionRate: 19,
+  },
+  {
+    id: 'agent-005',
+    name: 'Pedro García',
+    email: 'pedro.garcia@inmobiliaria.mx',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Pedro',
+    role: 'admin' as TeamMemberRole,
+    status: 'activo' as TeamMemberStatus,
+    leadRoutingWeight: 0,
+    leadsThisMonth: 4,
+    conversionRate: 16,
+  },
+  {
+    id: 'agent-006',
+    name: 'Javier Soto',
+    email: 'javier.soto@inmobiliaria.mx',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Javier',
+    role: 'agente' as TeamMemberRole,
+    status: 'activo' as TeamMemberStatus,
+    leadRoutingWeight: 0,
+    leadsThisMonth: 3,
+    conversionRate: 14,
+  },
+  {
+    id: 'agent-007',
+    name: 'Lucía Reyes',
+    email: 'lucia.reyes@inmobiliaria.mx',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucia',
+    role: 'agente' as TeamMemberRole,
+    status: 'activo' as TeamMemberStatus,
+    leadRoutingWeight: 0,
+    leadsThisMonth: 2,
+    conversionRate: 11,
+  },
 ];
 
 const DEFAULT_TEAM_NAME = 'Equipo de Carlos Martínez';
@@ -177,6 +222,8 @@ export default function TeamV2() {
 
   // Onboarding tracking
   const [hasVisitedPerformance, setHasVisitedPerformance] = useState(false);
+  const [highlightPerformance, setHighlightPerformance] = useState(false);
+  const highlightTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sprint 9 state
   const [comparisonSheetOpen, setComparisonSheetOpen] = useState(false);
@@ -208,15 +255,55 @@ export default function TeamV2() {
   const activeAgents = agents.filter((a) => a.status === 'activo');
 
   // Workload calculation
-  const agentActiveLeads = useMemo(() => {
+  
+  // Mock override SOLO para probar "Carga del Equipo" en V2 sin tocar mockData global (V1 no se afecta)
+  const leadAssigneeOverride = useMemo<Record<string, string>>(
+    () => ({
+      'lead-001': 'agent-001',
+      'lead-002': 'agent-004',
+      'lead-003': 'agent-004',
+      'lead-004': 'agent-005',
+      'lead-005': 'agent-006',
+      'lead-006': 'agent-007',
+    }),
+    []
+  );
+
+const agentActiveLeads = useMemo(() => {
     const counts: Record<string, number> = {};
     agents.forEach((a) => {
       counts[a.id] = mockLeads.filter(
-        (l) => l.assignedAgentId === a.id && l.stage !== 'cerrado' && l.stage !== 'perdido'
+        (l) => (leadAssigneeOverride[l.id] ?? l.assignedAgentId) === a.id && l.stage !== 'cerrado' && l.stage !== 'perdido'
       ).length;
     });
     return counts;
-  }, [agents]);
+  }, [agents, leadAssigneeOverride]);
+
+  const workloadAgents = useMemo(() => {
+    return agents
+      .filter((a) => a.status !== "invitado")
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        avatar: a.avatar,
+        activeLeads: agentActiveLeads[a.id] ?? 0,
+      }));
+  }, [agents, agentActiveLeads]);
+
+  const goToPerformance = useCallback(() => {
+    setActiveTab("performance");
+    setHasVisitedPerformance(true);
+    if (highlightTimeout.current) clearTimeout(highlightTimeout.current);
+    setHighlightPerformance(true);
+    highlightTimeout.current = setTimeout(() => setHighlightPerformance(false), 900);
+    setTimeout(() => {
+      document.getElementById("team-performance")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+  }, []);
+
 
   const teamAverageLeads = useMemo(() => {
     const activeIds = activeAgents.map((a) => a.id);
@@ -585,7 +672,16 @@ export default function TeamV2() {
       />
 
       {/* Team Members & Routing */}
-      <Tabs value={activeTab} onValueChange={(v) => {
+      
+      <TeamWorkloadSummary
+        teamName="Equipo Polanco"
+        agents={workloadAgents}
+        onMoreClick={goToPerformance}
+        className="mb-4"
+      />
+
+<div className="mt-2">
+<Tabs value={activeTab} onValueChange={(v) => {
         setActiveTab(v);
         if (v === 'performance') setHasVisitedPerformance(true);
       }}>
@@ -901,17 +997,14 @@ export default function TeamV2() {
         </TabsContent>
 
         <TabsContent value="performance" className="mt-4 space-y-4">
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              onClick={() => setComparisonSheetOpen(true)}
-              disabled={agents.length < 2}
-            >
-              <GitCompareArrows className="mr-2 h-4 w-4" />
-              Comparar
-            </Button>
-          </div>
-          <PerformanceTable data={mockTeamPerformance} />
+          <div id="team-performance" className="scroll-mt-24" />
+          <PerformanceTable
+            data={mockTeamPerformance}
+            totalAgents={agents.length}
+            onCompare={() => setComparisonSheetOpen(true)}
+            compareDisabled={agents.length < 2}
+            highlight={highlightPerformance}
+          />
         </TabsContent>
 
         <TabsContent value="activity" className="mt-4">
@@ -924,6 +1017,7 @@ export default function TeamV2() {
           </TabsContent>
         )}
       </Tabs>
+</div>
 
       {/* Bulk Action Toolbar */}
       <BulkActionToolbar
@@ -1018,3 +1112,8 @@ export default function TeamV2() {
     </div>
   );
 }
+  useEffect(() => {
+    return () => {
+      if (highlightTimeout.current) clearTimeout(highlightTimeout.current);
+    };
+  }, []);

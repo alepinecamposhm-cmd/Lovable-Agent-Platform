@@ -22,16 +22,18 @@ import {
   mockAgent, 
   mockLeads, 
   mockAppointments, 
-  mockNotifications,
   mockMetrics,
   mockCreditAccount,
   mockTasks,
+  mockTeamAgents,
 } from '@/lib/agents/fixtures';
 import { staggerContainer, staggerItem } from '@/lib/agents/motion/tokens';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { useEffect } from 'react';
+import { useMemo } from 'react';
+import { useAccess } from '@/lib/permissions/useAccess';
+import { getPreviewPersonById } from '@/lib/permissions/mockPeopleCatalog';
 
 // #region agent log
 const DEBUG_INGEST = 'http://127.0.0.1:7242/ingest/09986fe5-9bd4-4263-a66c-7f830704a56d';
@@ -47,12 +49,57 @@ export default function AgentOverview() {
   // }, []);
   // #endregion
 
-  const todayAppointments = mockAppointments.filter(
-    apt => format(apt.scheduledAt, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ||
-           format(apt.scheduledAt, 'yyyy-MM-dd') === '2026-01-29'
+  const access = useAccess();
+  const previewPerson = getPreviewPersonById(access.effectivePersonaId);
+  const activeAgentIdForData = access.role === 'agent' ? access.effectiveAgentId : null;
+  const activeAgent = useMemo(
+    () => mockTeamAgents.find((a) => a.id === access.effectivePersonaId) ?? mockAgent,
+    [access.effectivePersonaId]
   );
 
-  const pendingTasks = mockTasks.filter(t => t.status === 'pending');
+  const agentLeads = useMemo(
+    () => (activeAgentIdForData ? mockLeads.filter((lead) => lead.assignedTo === activeAgentIdForData) : mockLeads),
+    [activeAgentIdForData]
+  );
+
+  const activeLeads = useMemo(
+    () => agentLeads.filter((lead) => lead.stage !== 'closed' && lead.stage !== 'closed_lost'),
+    [agentLeads]
+  );
+
+  const todayAppointments = useMemo(
+    () =>
+      mockAppointments.filter(
+        (apt) =>
+          (!activeAgentIdForData || apt.agentId === activeAgentIdForData) &&
+          (format(apt.scheduledAt, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ||
+            format(apt.scheduledAt, 'yyyy-MM-dd') === '2026-01-29')
+      ),
+    [activeAgentIdForData]
+  );
+
+  const pendingTasks = useMemo(
+    () => mockTasks.filter((t) => t.status === 'pending' && (!activeAgentIdForData || t.agentId === activeAgentIdForData)),
+    [activeAgentIdForData]
+  );
+
+  const responseTime = useMemo(() => {
+    const responded = agentLeads.filter((lead) => lead.assignedAt && lead.acceptedAt);
+    if (responded.length === 0) return mockMetrics.responseTimeAvg;
+    const avgMs = responded.reduce((sum, lead) => sum + (lead.acceptedAt!.getTime() - lead.assignedAt!.getTime()), 0) / responded.length;
+    return Math.max(1, Math.round(avgMs / 60000));
+  }, [agentLeads]);
+
+  const conversion = useMemo(() => {
+    if (agentLeads.length === 0) return 0;
+    const closed = agentLeads.filter((lead) => lead.stage === 'closed').length;
+    return Math.round((closed / agentLeads.length) * 100);
+  }, [agentLeads]);
+
+  const appointmentsThisWeek = useMemo(
+    () => mockAppointments.filter((apt) => !activeAgentIdForData || apt.agentId === activeAgentIdForData).length,
+    [activeAgentIdForData]
+  );
 
   return (
     <motion.div
@@ -64,7 +111,7 @@ export default function AgentOverview() {
       {/* Header */}
       <motion.div variants={staggerItem}>
         <h1 className="text-2xl font-bold tracking-tight">
-          ¡Hola, {mockAgent.firstName}! 👋
+          ¡Hola, {previewPerson?.name?.split(' ')[0] || activeAgent.firstName}! 👋
         </h1>
         <p className="text-muted-foreground">
           Aquí está el resumen de tu actividad de hoy
@@ -84,7 +131,7 @@ export default function AgentOverview() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockMetrics.leadsActive}</div>
+            <div className="text-2xl font-bold">{activeLeads.length}</div>
             <div className="flex items-center text-xs text-success mt-1">
               <ArrowUpRight className="h-3 w-3 mr-1" />
               +2 esta semana
@@ -101,7 +148,7 @@ export default function AgentOverview() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockMetrics.responseTimeAvg} min</div>
+            <div className="text-2xl font-bold">{responseTime} min</div>
             <div className="flex items-center text-xs text-success mt-1">
               <ArrowDownRight className="h-3 w-3 mr-1" />
               -15 min vs promedio
@@ -118,7 +165,7 @@ export default function AgentOverview() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockMetrics.appointmentsThisWeek}</div>
+            <div className="text-2xl font-bold">{appointmentsThisWeek}</div>
             <div className="flex items-center text-xs text-muted-foreground mt-1">
               {mockAppointments.filter(a => a.status === 'confirmed').length} confirmadas
             </div>
@@ -134,7 +181,7 @@ export default function AgentOverview() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockMetrics.conversionToAppointment}%</div>
+            <div className="text-2xl font-bold">{conversion}%</div>
             <div className="flex items-center text-xs text-success mt-1">
               <ArrowUpRight className="h-3 w-3 mr-1" />
               +5% vs mes pasado
@@ -202,9 +249,9 @@ export default function AgentOverview() {
                   <div>
                     <div className="flex justify-between text-sm mb-1">
                       <span>Perfil completo</span>
-                      <span className="font-medium">{mockAgent.profileCompletion}%</span>
+                      <span className="font-medium">{activeAgent.profileCompletion}%</span>
                     </div>
-                    <Progress value={mockAgent.profileCompletion} className="h-2" />
+                    <Progress value={activeAgent.profileCompletion} className="h-2" />
                   </div>
                 </div>
               </div>
@@ -231,7 +278,7 @@ export default function AgentOverview() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {mockLeads.slice(0, 4).map((lead) => (
+                {agentLeads.slice(0, 4).map((lead) => (
                   <Link
                     key={lead.id}
                     to={`/agents/leads/${lead.id}`}

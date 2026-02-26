@@ -10,6 +10,7 @@ import { AgentErrorBoundary } from "./AgentErrorBoundary";
 
 // Agent Platform
 import { AgentLayout } from "./components/agents/layout/AgentLayout";
+import { LovableAgentLayout } from "./components/lovable/layout/LovableAgentLayout";
 import AgentOverview from "./pages/agents/overview";
 import AgentLeads from "./pages/agents/leads";
 import AgentLeadDetail from "./pages/agents/lead-detail";
@@ -26,6 +27,8 @@ import AgentRoiReport from "./pages/agents/reports-roi";
 import AgentLeadReport from "./pages/agents/reports-leads";
 import AgentTeamReport from "./pages/agents/reports-team";
 import AgentTeam from "./pages/agents/team";
+import AgentTeamV2 from "./pages/agents/team-v2";
+import AgentTeamMemberDetailV2 from "./pages/agents/team-member-detail-v2";
 import AgentSettings from "./pages/agents/settings";
 import AgentRoadmap from "./pages/agents/roadmap";
 import AgentNotifications from "./pages/agents/notifications";
@@ -36,6 +39,7 @@ import AgentOpenHouseVisitors from "./pages/agents/open-house/visitors";
 import AgentAudit from "./pages/agents/audit";
 import InviteAcceptPage from "./pages/invite";
 import { toast } from "@/components/ui/use-toast";
+import { AccessGate } from "@/components/auth/AccessGate";
 
 const queryClient = new QueryClient();
 
@@ -63,34 +67,41 @@ const App = () => {
             {/* Agent Platform Routes */}
             <Route path="/agents" element={<AgentErrorBoundary><AgentLayout /></AgentErrorBoundary>}>
               <Route index element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<AgentOverview />} />
-              <Route path="leads" element={<AgentLeads />} />
+              <Route path="overview" element={<AccessGate cap="view_dashboard"><AgentOverview /></AccessGate>} />
+              <Route path="leads" element={<AccessGate cap="view_leads"><AgentLeads /></AccessGate>} />
               {/* PDF route alias: /agents/lead/:id */}
-              <Route path="lead/:leadId" element={<AgentLeadDetail />} />
-              <Route path="leads/:leadId" element={<AgentLeadDetail />} />
-              <Route path="inbox" element={<AgentInbox />} />
-              <Route path="calendar" element={<AgentCalendar />} />
-              <Route path="listings" element={<AgentListings />} />
-              <Route path="listings/new" element={<AgentListingWizard />} />
-              <Route path="listings/:listingId/edit" element={<AgentListingWizard />} />
-              <Route path="listings/:listingId" element={<AgentListingDetail />} />
+              <Route path="lead/:leadId" element={<AccessGate cap="view_leads"><AgentLeadDetail /></AccessGate>} />
+              <Route path="leads/:leadId" element={<AccessGate cap="view_leads"><AgentLeadDetail /></AccessGate>} />
+              <Route path="inbox" element={<AccessGate cap="view_inbox"><AgentInbox /></AccessGate>} />
+              <Route path="calendar" element={<AccessGate cap="view_calendar"><AgentCalendar /></AccessGate>} />
+              <Route path="listings" element={<AccessGate cap="view_listings"><AgentListings /></AccessGate>} />
+              <Route path="listings/new" element={<AccessGate cap="view_listings"><AgentListingWizard /></AccessGate>} />
+              <Route path="listings/:listingId/edit" element={<AccessGate cap="view_listings"><AgentListingWizard /></AccessGate>} />
+              <Route path="listings/:listingId" element={<AccessGate cap="view_listings"><AgentListingDetail /></AccessGate>} />
               <Route path="profile" element={<AgentProfilePage />} />
               <Route path="profile/:agentId" element={<AgentProfilePage />} />
-              <Route path="credits" element={<AgentCredits />} />
-              <Route path="team" element={<AgentTeam />} />
-              <Route path="reports" element={<AgentReports />} />
-              <Route path="reports/leads" element={<AgentLeadReport />} />
-              <Route path="reports/experience" element={<AgentExperienceReport />} />
-              <Route path="reports/roi" element={<AgentRoiReport />} />
-              <Route path="reports/team" element={<AgentTeamReport />} />
+              <Route path="credits" element={<AccessGate cap="view_billing"><AgentCredits /></AccessGate>} />
+              <Route path="team" element={<AccessGate cap="view_team"><AgentTeam /></AccessGate>} />
+              <Route path="reports" element={<AccessGate cap="view_reports_self"><AgentReports /></AccessGate>} />
+              <Route path="reports/leads" element={<AccessGate cap="view_reports_self"><AgentLeadReport /></AccessGate>} />
+              <Route path="reports/experience" element={<AccessGate cap="view_reports_self"><AgentExperienceReport /></AccessGate>} />
+              <Route path="reports/roi" element={<AccessGate cap="view_reports_self"><AgentRoiReport /></AccessGate>} />
+              <Route path="reports/team" element={<AccessGate cap="view_reports_team"><AgentTeamReport /></AccessGate>} />
               <Route path="roadmap" element={<AgentRoadmap />} />
-              <Route path="notifications" element={<AgentNotifications />} />
-              <Route path="tasks" element={<AgentTasks />} />
+              <Route path="notifications" element={<AccessGate cap="view_notifications"><AgentNotifications /></AccessGate>} />
+              <Route path="tasks" element={<AccessGate cap="view_tasks"><AgentTasks /></AccessGate>} />
               <Route path="integrations" element={<AgentIntegrations />} />
               <Route path="settings/notifications" element={<AgentNotificationSettings />} />
               <Route path="open-house/visitors" element={<AgentOpenHouseVisitors />} />
-              <Route path="settings" element={<AgentSettings />} />
+              <Route path="settings" element={<AccessGate cap="view_settings"><AgentSettings /></AccessGate>} />
               <Route path="audit" element={<AgentAudit />} />
+            </Route>
+
+
+            {/* Lovable reference layout (v2) – start with Equipo */}
+            <Route path="/agents/team-v2" element={<AgentErrorBoundary><LovableAgentLayout /></AgentErrorBoundary>}>
+              <Route index element={<AccessGate cap="view_team"><AgentTeamV2 /></AccessGate>} />
+              <Route path="member/:id" element={<AccessGate cap="view_team"><AgentTeamMemberDetailV2 /></AccessGate>} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

@@ -59,6 +59,8 @@ import { LeadsCrmTable } from '@/components/agents/leads/LeadsCrmTable';
 import { LeadsFiltersSheet } from '@/components/agents/leads/LeadsFiltersSheet';
 import { getDefaultLeadsQueryState, parseLeadsQuery, serializeLeadsQuery, type LeadsQueryState, type LeadsViewMode } from '@/components/agents/leads/leadsFiltersQuery';
 import { addLead, updateLeadStage, useLeadStore } from '@/lib/agents/leads/store';
+import { useAccess } from '@/lib/permissions/useAccess';
+import { scopeLeads } from '@/lib/dataScope';
 
 const stageConfig: Record<LeadStage, { label: string; color: string; helper?: string }> = {
   new: { label: 'New', color: 'bg-blue-500', helper: 'Ingreso reciente' },
@@ -291,7 +293,8 @@ export default function AgentLeads() {
   const [assignmentFlash, setAssignmentFlash] = useState<Set<string>>(new Set());
   const assignmentRef = useRef<Record<string, string>>({});
   const currentUser = getCurrentUser();
-  const canViewTeam = currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'broker';
+  const access = useAccess();
+  const canViewTeam = access.can('view_team');
   const { mutateAsync: consumeCredits } = useConsumeCredits();
   const { data: creditAccount } = useCreditAccount();
   const invalidToastShown = useRef(false);
@@ -336,9 +339,14 @@ export default function AgentLeads() {
     }
   }, [viewMode]);
 
+  const visibleLeads = useMemo(
+    () => scopeLeads(leads, access.role, access.effectiveAgentId),
+    [leads, access.role, access.effectiveAgentId]
+  );
+
   const staleCount = useMemo(
-    () => leads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
-    [leads]
+    () => visibleLeads.filter((l) => l.stage === 'new' && differenceInHours(new Date(), l.createdAt) >= 2).length,
+    [visibleLeads]
   );
   const memberLookup = useMemo(() => {
     const map: Record<string, string> = {};
@@ -355,7 +363,7 @@ export default function AgentLeads() {
     const prev = assignmentRef.current;
     const nextMap: Record<string, string> = {};
     const changed = new Set<string>();
-    leads.forEach((l) => {
+    visibleLeads.forEach((l) => {
       nextMap[l.id] = l.assignedTo || '';
       if (prev[l.id] && prev[l.id] !== l.assignedTo) {
         changed.add(l.id);
@@ -367,10 +375,10 @@ export default function AgentLeads() {
       const id = setTimeout(() => setAssignmentFlash(new Set()), 900);
       return () => clearTimeout(id);
     }
-  }, [leads]);
+  }, [visibleLeads]);
 
   useEffect(() => {
-    const stale = leads.filter(
+    const stale = visibleLeads.filter(
       (lead) =>
         lead.stage === 'new' &&
         differenceInHours(new Date(), lead.createdAt) >= 2
@@ -403,7 +411,7 @@ export default function AgentLeads() {
         localStorage.setItem('agenthub_sla_notified', '1');
       }
     }
-  }, [leads, navigate, backTo]);
+  }, [visibleLeads, navigate, backTo]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -424,10 +432,10 @@ export default function AgentLeads() {
   const filteredLeads = useMemo(() => {
     const text = searchQuery.toLowerCase();
     const scoped = filters.assignment.scope === 'mine'
-      ? leads.filter((l) => l.assignedTo === currentUser.id)
+      ? visibleLeads.filter((l) => l.assignedTo === access.effectiveAgentId)
       : filters.assignment.scope === 'team'
-        ? leads
-        : leads.filter((l) => l.assignedTo === filters.assignment.agentId);
+        ? visibleLeads
+        : visibleLeads.filter((l) => l.assignedTo === filters.assignment.agentId);
 
     return scoped
       .filter((lead) =>
@@ -443,7 +451,7 @@ export default function AgentLeads() {
       })
       .filter((lead) => !onlyNew || differenceInHours(new Date(), lead.createdAt) <= 48 || lead.stage === 'new')
       .filter((lead) => !onlyUnread || unreadLeadIds.has(lead.id));
-  }, [leads, searchQuery, filters.assignment.scope, assignmentAgentId, filters.preApproved, filters.stages, filters.timeframe, onlyNew, onlyUnread, unreadLeadIds, currentUser.id]);
+  }, [visibleLeads, searchQuery, filters.assignment.scope, assignmentAgentId, filters.preApproved, filters.stages, filters.timeframe, onlyNew, onlyUnread, unreadLeadIds, access.effectiveAgentId]);
 
   const leadsByStage = useMemo(() => {
     return pipelineStages.reduce((acc, stage) => {
@@ -452,7 +460,7 @@ export default function AgentLeads() {
     }, {} as Partial<Record<LeadStage, Lead[]>>);
   }, [filteredLeads]);
 
-  const activeLead = activeId ? leads.find((l) => l.id === activeId) : null;
+  const activeLead = activeId ? visibleLeads.find((l) => l.id === activeId) : null;
 
   const getCostForAction = (action: 'lead_basic' | 'lead_premium') => {
     const rule = creditAccount?.rules.find((r) => r.action === action);

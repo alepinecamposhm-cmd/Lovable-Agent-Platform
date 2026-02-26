@@ -13,16 +13,19 @@ import { track } from '@/lib/agents/reports/analytics';
 import { useReportsPeriod } from '@/lib/agents/reports/period-store';
 import type { LeadReportContext } from '@/lib/agents/reports/leadReport';
 import { mockConversations, mockMessages } from '@/lib/agents/fixtures';
-import { buildTeamMemberRows, buildTeamPipeline, isLeader, TEAM_PIPELINE_STAGES } from '@/lib/agents/reports/teamReport';
+import { buildTeamMemberRows, buildTeamPipeline, TEAM_PIPELINE_STAGES } from '@/lib/agents/reports/teamReport';
 import { computeAnswerRatePct, filterLeadsByPeriod } from '@/lib/agents/reports/leadReport';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAccess } from '@/lib/permissions/useAccess';
+import { scopeLeads } from '@/lib/dataScope';
 
 export default function AgentTeamReport() {
   const period = useReportsPeriod();
   const { leads } = useLeadStore();
   const { members } = useTeamStore();
   const currentUser = getCurrentUser();
-  const canView = isLeader(currentUser.role);
+  const access = useAccess();
+  const canView = access.can('view_reports_team');
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
@@ -56,10 +59,12 @@ export default function AgentTeamReport() {
     [now, period],
   );
 
+  const scopedLeads = useMemo(() => scopeLeads(leads, access.role, access.effectiveAgentId), [leads, access.role, access.effectiveAgentId]);
+
   const teamLeads = useMemo(() => {
     const memberIds = new Set(members.map((m) => m.id));
-    return leads.filter((l) => memberIds.has(l.assignedTo));
-  }, [leads, members]);
+    return scopedLeads.filter((l) => memberIds.has(l.assignedTo));
+  }, [scopedLeads, members]);
 
   const computed = useMemo(() => {
     void retryToken;

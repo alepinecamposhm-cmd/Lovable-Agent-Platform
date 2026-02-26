@@ -21,6 +21,7 @@ import { computeAgentScore } from '@/lib/agents/reports/agentScore';
 import { buildListingPerformance } from '@/lib/agents/reports/listingPerformance';
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Link } from 'react-router-dom';
+import { useAccess } from '@/lib/permissions/useAccess';
 
 function bucketLabel(idx: number) {
   return `Sem ${idx + 1}`;
@@ -32,6 +33,7 @@ export default function AgentReports() {
   const { appointments } = useAppointmentStore();
   const { listings, activities } = useListingStore();
   const currentUser = getCurrentUser();
+  const access = useAccess();
 
   const [loading, setLoading] = useState(true);
   const [retryToken, setRetryToken] = useState(0);
@@ -70,9 +72,9 @@ export default function AgentReports() {
     [now, period],
   );
 
-  const myLeads = useMemo(() => leads.filter((l) => l.assignedTo === currentUser.id), [currentUser.id, leads]);
-  const myAppointments = useMemo(() => appointments.filter((a) => a.agentId === currentUser.id), [appointments, currentUser.id]);
-  const myListings = useMemo(() => listings.filter((l) => l.agentId === currentUser.id), [currentUser.id, listings]);
+  const myLeads = useMemo(() => leads.filter((l) => l.assignedTo === access.effectiveAgentId), [access.effectiveAgentId, leads]);
+  const myAppointments = useMemo(() => appointments.filter((a) => a.agentId === access.effectiveAgentId), [appointments, access.effectiveAgentId]);
+  const myListings = useMemo(() => listings.filter((l) => l.agentId === access.effectiveAgentId), [access.effectiveAgentId, listings]);
   const myActivities = useMemo(() => {
     const listingIdSet = new Set(myListings.map((l) => l.id));
     return activities.filter((a) => listingIdSet.has(a.listingId));
@@ -181,6 +183,14 @@ export default function AgentReports() {
         <KpiCard icon={Users} label="Leads activos" value={loading ? '—' : String(computed.kpis.activeLeads)} helper="En pipeline (no cerrados)" />
         <KpiCard icon={BarChart3} label="Tasa de cierre" value={loading ? '—' : `${computed.kpis.closeRatePct}%`} helper="Cerrados / leads del periodo" />
         <KpiCard icon={BadgeCheck} label="Perfil completado" value={loading ? '—' : `${computed.kpis.profileCompletionPct}%`} helper="Progreso del perfil" />
+        {access.can('view_billing_self') && (
+          <KpiCard
+            icon={BarChart3}
+            label="Consumo del mes (mock)"
+            value={loading ? '—' : `${Math.max(0, computed.kpis.leadsReceived * 2)} cr`}
+            helper="Vista informativa (prototipo)"
+          />
+        )}
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">

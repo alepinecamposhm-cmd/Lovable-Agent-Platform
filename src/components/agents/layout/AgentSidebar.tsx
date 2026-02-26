@@ -34,36 +34,60 @@ import { cn } from '@/lib/utils';
 import { mockAgent } from '@/lib/agents/fixtures';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useTaskStore } from '@/lib/agents/tasks/store';
-import { getCurrentUser } from '@/lib/agents/team/store';
 import { getRoutingAlert } from '@/lib/agents/routing/store';
+import type { Capability } from '@/lib/permissions/capabilities';
+import { useAccess } from '@/lib/permissions/useAccess';
+import { isPreviewEnabled } from '@/lib/permissions/previewRole';
+import { getPreviewPersonById } from '@/lib/permissions/mockPeopleCatalog';
 
 const mainNavItems = [
-  { title: 'Dashboard', url: '/agents/overview', icon: LayoutDashboard },
-  { title: 'Leads', url: '/agents/leads', icon: Users },
-  { title: 'Inbox', url: '/agents/inbox', icon: MessageSquare, badge: 2 },
-  { title: 'Calendario', url: '/agents/calendar', icon: Calendar },
-  { title: 'Propiedades', url: '/agents/listings', icon: Building2 },
+  { title: 'Dashboard', url: '/agents/overview', icon: LayoutDashboard, cap: 'view_dashboard' as Capability },
+  { title: 'Leads', url: '/agents/leads', icon: Users, cap: 'view_leads' as Capability },
+  { title: 'Inbox', url: '/agents/inbox', icon: MessageSquare, badge: 2, cap: 'view_inbox' as Capability },
+  { title: 'Calendario', url: '/agents/calendar', icon: Calendar, cap: 'view_calendar' as Capability },
+  { title: 'Propiedades', url: '/agents/listings', icon: Building2, cap: 'view_listings' as Capability },
 ];
 
 const secondaryNavItems = [
-  { title: 'Créditos', url: '/agents/credits', icon: CreditCard },
-  { title: 'Reportes', url: '/agents/reports', icon: BarChart3 },
-  { title: 'Mapa (Plan)', url: '/agents/roadmap', icon: Map },
-  { title: 'Notificaciones', url: '/agents/notifications', icon: Bell },
-  { title: 'Tareas', url: '/agents/tasks', icon: AlarmClock, badgeKey: 'tasks' },
-  { title: 'Audit', url: '/agents/audit', icon: BarChart3 },
+  { title: 'Créditos', url: '/agents/credits', icon: CreditCard, cap: 'view_billing' as Capability },
+  { title: 'Reportes', url: '/agents/reports', icon: BarChart3, cap: 'view_reports_self' as Capability },
+  { title: 'Mapa (Plan)', url: '/agents/roadmap', icon: Map, cap: 'view_dashboard' as Capability },
+  { title: 'Notificaciones', url: '/agents/notifications', icon: Bell, cap: 'view_notifications' as Capability },
+  { title: 'Tareas', url: '/agents/tasks', icon: AlarmClock, badgeKey: 'tasks', cap: 'view_tasks' as Capability },
+  { title: 'Audit', url: '/agents/audit', icon: BarChart3, cap: 'view_settings' as Capability },
 ];
 
-const settingsItem = { title: 'Configuración', url: '/agents/settings', icon: Settings };
+const comparisonNavItems = [
+  { title: 'Equipo (v1)', url: '/agents/team', icon: UsersRound, cap: 'view_team' as Capability },
+  { title: 'Equipo (v2)', url: '/agents/team-v2', icon: UsersRound, cap: 'view_team' as Capability },
+];
+
+const settingsItem = { title: 'Configuración', url: '/agents/settings', icon: Settings, cap: 'view_settings' as Capability };
 
 export function AgentSidebar() {
   const location = useLocation();
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
   const { pending: pendingTasks } = useTaskStore();
-  const currentUser = getCurrentUser();
+  const access = useAccess();
+  const visibleComparisonItems = isPreviewEnabled()
+    ? comparisonNavItems.filter((item) => access.can(item.cap))
+    : [];
+  const previewPerson = getPreviewPersonById(access.effectivePersonaId);
+  const footerName = previewPerson?.name ?? `${mockAgent.firstName} ${mockAgent.lastName}`;
+  const footerEmail = previewPerson?.email ?? mockAgent.email;
+  const footerAvatar = previewPerson?.avatar ?? mockAgent.avatarUrl;
+  const footerRoleLabel = access.role === 'leader' ? 'Líder' : access.role === 'admin' ? 'Admin' : 'Agente';
 
-  const isActive = (url: string) => location.pathname.startsWith(url);
+  const isActive = (url: string) => {
+    if (url === '/agents/team') {
+      return location.pathname === '/agents/team' || location.pathname.startsWith('/agents/team/');
+    }
+    if (url === '/agents/team-v2') {
+      return location.pathname === '/agents/team-v2' || location.pathname.startsWith('/agents/team-v2/');
+    }
+    return location.pathname.startsWith(url);
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -94,6 +118,7 @@ export function AgentSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
+                access.can(item.cap) ? (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -135,6 +160,7 @@ export function AgentSidebar() {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                ) : null
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -146,9 +172,9 @@ export function AgentSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {[{ title: 'Equipo', url: '/agents/team', icon: UsersRound },
+              {[{ title: 'Equipo', url: '/agents/team', icon: UsersRound, cap: 'view_team' as Capability },
                 ...secondaryNavItems].map((item) => {
-                  if (item.title === 'Equipo' && !(currentUser.role === 'owner' || currentUser.role === 'admin')) {
+                  if (!access.can(item.cap)) {
                     return null;
                   }
                   return (
@@ -196,29 +222,65 @@ export function AgentSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {visibleComparisonItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-sidebar-foreground/60 text-xs uppercase tracking-wider">
+              Comparación
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visibleComparisonItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.url)}
+                      tooltip={isCollapsed ? item.title : undefined}
+                    >
+                      <Link
+                        to={item.url}
+                        className={cn(
+                          'flex items-center gap-3 rounded-lg px-3 py-2 transition-all',
+                          isActive(item.url)
+                            ? 'bg-sidebar-accent text-sidebar-primary'
+                            : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                        )}
+                      >
+                        <item.icon className="h-5 w-5 shrink-0" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-2 mt-auto border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              isActive={isActive(settingsItem.url)}
-              tooltip={isCollapsed ? settingsItem.title : undefined}
-            >
-              <Link
-                to={settingsItem.url}
-                className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-2 transition-all',
-                  isActive(settingsItem.url)
-                    ? 'bg-sidebar-accent text-sidebar-primary'
-                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-                )}
+            {access.can(settingsItem.cap) && (
+              <SidebarMenuButton
+                asChild
+                isActive={isActive(settingsItem.url)}
+                tooltip={isCollapsed ? settingsItem.title : undefined}
               >
-                <settingsItem.icon className="h-5 w-5 shrink-0" />
-                {!isCollapsed && <span>{settingsItem.title}</span>}
-              </Link>
-            </SidebarMenuButton>
+                <Link
+                  to={settingsItem.url}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg px-3 py-2 transition-all',
+                    isActive(settingsItem.url)
+                      ? 'bg-sidebar-accent text-sidebar-primary'
+                      : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                  )}
+                >
+                  <settingsItem.icon className="h-5 w-5 shrink-0" />
+                  {!isCollapsed && <span>{settingsItem.title}</span>}
+                </Link>
+              </SidebarMenuButton>
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
 
@@ -229,18 +291,19 @@ export function AgentSidebar() {
             className="flex items-center gap-3 p-3 mt-2 rounded-lg bg-sidebar-accent/30"
           >
             <Avatar className="h-9 w-9">
-              <AvatarImage src={mockAgent.avatarUrl} />
+              <AvatarImage src={footerAvatar} />
               <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-sm">
-                {mockAgent.firstName[0]}{mockAgent.lastName[0]}
+                {footerName.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-sidebar-foreground truncate">
-                {mockAgent.firstName} {mockAgent.lastName}
+                {footerName}
               </p>
               <p className="text-xs text-sidebar-foreground/60 truncate">
-                {mockAgent.email}
+                {footerEmail}
               </p>
+              <p className="text-[10px] text-sidebar-foreground/60">{footerRoleLabel}</p>
             </div>
           </motion.div>
         )}

@@ -27,7 +27,8 @@ import type { Conversation, Message } from '@/types/agents';
 import { add as addNotification, markRead as markNotificationRead, useNotificationStore } from '@/lib/agents/notifications/store';
 import { addTask } from '@/lib/agents/tasks/store';
 import { toast } from '@/components/ui/use-toast';
-import { getCurrentUser } from '@/lib/agents/team/store';
+import { useAccess } from '@/lib/permissions/useAccess';
+import { scopeInbox } from '@/lib/dataScope';
 
 const templates = [
   { id: 't1', label: 'Saludo inicial', content: '¡Hola! Gracias por tu interés. Estoy aquí para ayudarte a encontrar tu propiedad ideal.' },
@@ -164,10 +165,11 @@ export default function AgentInbox() {
     if (typeof window === 'undefined') return false;
     return window.localStorage.getItem('agenthub_view_all_inbox') === 'true';
   });
-  const currentUser = getCurrentUser();
-  const canViewTeam = currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'broker';
+  const access = useAccess();
+  const canViewTeam = access.can('view_team');
+  const visibleConversations = scopeInbox(conversations, access.role, access.effectiveAgentId);
 
-  const filteredConversations = conversations
+  const filteredConversations = visibleConversations
     .filter((conv) => {
       const matchesSearch =
         conv.lead?.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -175,7 +177,7 @@ export default function AgentInbox() {
       const allowed =
         viewAllTeam && canViewTeam
           ? true
-          : conv.lead?.assignedTo === currentUser.id;
+          : conv.lead?.assignedTo === access.effectiveAgentId;
       return matchesSearch && allowed;
     })
     .filter((conv) => !onlyUnreadConv || (conv.unreadCount ?? 0) > 0);

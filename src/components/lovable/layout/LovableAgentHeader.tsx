@@ -25,6 +25,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { mockNotifications } from "@/data/mockData";
 import { cn } from "@/lib/utils";
+import { RolePreviewTabs } from "@/components/auth/RolePreviewTabs";
+import { PersonaPreviewSelect } from "@/components/auth/PersonaPreviewSelect";
 
 const commandItems = [
   { label: "Ir a Dashboard", shortcut: "D", action: "/agents" },
@@ -99,6 +101,11 @@ export function LovableAgentHeader() {
               <span className="text-xs">⌘</span>K
             </kbd>
           </Button>
+
+          <div className="hidden xl:flex items-center gap-2">
+            <RolePreviewTabs />
+            <PersonaPreviewSelect />
+          </div>
         </div>
 
         <DropdownMenu>

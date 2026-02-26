@@ -12,11 +12,11 @@ import { track } from '@/lib/agents/reports/analytics';
 import { useLeadStore } from '@/lib/agents/leads/store';
 import { mockConversations, mockMessages } from '@/lib/agents/fixtures';
 import { useReportsPeriod } from '@/lib/agents/reports/period-store';
-import { getCurrentUser } from '@/lib/agents/team/store';
 import type { LeadBreakdownKey, LeadReportContext } from '@/lib/agents/reports/leadReport';
 import { buildLeadBreakdown, buildLeadVolumeSeries, computeAnswerRatePct, filterLeadsByPeriod } from '@/lib/agents/reports/leadReport';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { Link } from 'react-router-dom';
+import { useAccess } from '@/lib/permissions/useAccess';
 
 const BREAKDOWN_KEY_STORAGE = 'agenthub_reports_leads_breakdown';
 
@@ -28,7 +28,7 @@ function parseBreakdown(raw: unknown): LeadBreakdownKey {
 export default function AgentLeadReport() {
   const period = useReportsPeriod();
   const { leads } = useLeadStore();
-  const currentUser = getCurrentUser();
+  const access = useAccess();
   const [breakdown, setBreakdown] = useState<LeadBreakdownKey>(() => {
     if (typeof window === 'undefined') return 'type';
     return parseBreakdown(window.localStorage.getItem(BREAKDOWN_KEY_STORAGE));
@@ -70,7 +70,7 @@ export default function AgentLeadReport() {
     [now, period],
   );
 
-  const myLeads = useMemo(() => leads.filter((l) => l.assignedTo === currentUser.id), [currentUser.id, leads]);
+  const myLeads = useMemo(() => leads.filter((l) => l.assignedTo === access.effectiveAgentId), [access.effectiveAgentId, leads]);
 
   const computed = useMemo(() => {
     void retryToken;

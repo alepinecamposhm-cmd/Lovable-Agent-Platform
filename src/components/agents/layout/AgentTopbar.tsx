@@ -27,6 +27,9 @@ import { useCreditAccount } from '@/lib/credits/query';
 import { cn as cnUtil } from '@/lib/utils';
 import { triggerCreditLow } from '@/lib/agents/notifications/triggers';
 import { useAnimatedNumber } from '@/lib/credits/useAnimatedNumber';
+import { RolePreviewTabs } from '@/components/auth/RolePreviewTabs';
+import { PersonaPreviewSelect } from '@/components/auth/PersonaPreviewSelect';
+import { useAccess } from '@/lib/permissions/useAccess';
 
 interface AgentTopbarProps {
   onOpenCommand: () => void;
@@ -55,6 +58,7 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
     if (!quietHours.enabled) return 'Notificaciones activas';
     return `Silenciado ${quietHours.start}–${quietHours.end}`;
   }, [quietHours]);
+  const access = useAccess();
 
   const track = (event: string, properties?: Record<string, unknown>) => {
     fetch('/api/analytics', {
@@ -151,6 +155,11 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
           </Button>
         </div>
 
+        <div className="hidden xl:flex items-center gap-2">
+          <RolePreviewTabs />
+          <PersonaPreviewSelect />
+        </div>
+
         {/* Right side actions */}
         <div className="flex items-center gap-2">
           <Tooltip>
@@ -163,7 +172,7 @@ export function AgentTopbar({ onOpenCommand }: AgentTopbarProps) {
                   lowBalance && 'border-warning text-warning',
                   creditError && 'border-destructive text-destructive'
                 )}
-                onClick={() => navigate('/agents/credits')}
+                onClick={() => navigate(access.can('view_billing') ? '/agents/credits' : '/agents/reports')}
               >
                 <CreditCard className="h-4 w-4" />
                 {creditLoading ? '—' : creditError ? 'Error' : `${animatedCreditBalance ?? creditAccount?.balance ?? '—'}`}

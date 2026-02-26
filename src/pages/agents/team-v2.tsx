@@ -86,6 +86,7 @@ import { TeamProfileCard } from '@/components/team/TeamProfileCard';
 import { currentAgent } from '@/data/mockData';
 import { toast } from 'sonner';
 import type { WeeklySchedule } from '@/types';
+import { useAccess } from '@/lib/permissions/useAccess';
 
 const roleConfig: Record<TeamMemberRole, { label: string; icon: React.ReactNode; color: string }> = {
   lider: { label: 'Líder', icon: <Crown className="h-4 w-4" />, color: 'text-yellow-500' },
@@ -202,6 +203,7 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 
 export default function TeamV2() {
   const navigate = useNavigate();
+  const access = useAccess();
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'agente' | 'admin'>('agente');
@@ -546,6 +548,11 @@ const agentActiveLeads = useMemo(() => {
     toast.success('Configuración del equipo actualizada');
   };
 
+  const handleResetPassword = (memberName: string, memberEmail: string) => {
+    addActivityEvent('member_updated', `Se envió enlace de restablecimiento a ${memberName}`, undefined, undefined, memberName);
+    toast.success(`Link de restablecimiento enviado a ${memberEmail}`);
+  };
+
   const handleReassignLeads = (fromAgentId: string, toAgentId: string, onlyUncontacted: boolean) => {
     const fromAgent = agents.find((a) => a.id === fromAgentId);
     const toAgent = agents.find((a) => a.id === toAgentId);
@@ -874,7 +881,13 @@ const agentActiveLeads = useMemo(() => {
                                   Cambiar rol
                                 </DropdownMenuItem>
                               )}
-                              {agent.role === 'lider' && (
+                              {access.can('reset_agent_password') && (
+                                <DropdownMenuItem onClick={() => handleResetPassword(agent.name, agent.email)}>
+                                  <Mail className="mr-2 h-4 w-4" />
+                                  Restablecer contraseña
+                                </DropdownMenuItem>
+                              )}
+                              {agent.role === 'lider' && access.can('transfer_leadership') && (
                                 <DropdownMenuItem onClick={() => setTransferDialogOpen(true)}>
                                   <Crown className="mr-2 h-4 w-4" />
                                   Transferir liderazgo

@@ -55,6 +55,8 @@ import type { Appointment } from '@/types/agents';
 import { add as addNotification } from '@/lib/agents/notifications/store';
 import { toast } from '@/components/ui/use-toast';
 import { addNoShowFollowUp } from '@/lib/agents/tasks/store';
+import { useAccess } from '@/lib/permissions/useAccess';
+import { scopeCalendar } from '@/lib/dataScope';
 
 const statusConfig = {
   pending: { label: 'Pendiente', color: 'bg-warning/10 text-warning border-warning/20' },
@@ -208,6 +210,7 @@ function AppointmentCard({
 
 export default function AgentCalendar() {
   const { appointments } = useAppointmentStore();
+  const access = useAccess();
   const [currentDate, setCurrentDate] = useState(new Date('2026-01-29'));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date('2026-01-29'));
   const [reschedule, setReschedule] = useState<RescheduleState>({ open: false, date: '', time: '' });
@@ -218,9 +221,18 @@ export default function AgentCalendar() {
   const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
+  const scopedAppointments = useMemo(
+    () => scopeCalendar(appointments, access.role, access.effectiveAgentId),
+    [appointments, access.role, access.effectiveAgentId]
+  );
+
+  useEffect(() => {
+    if (access.role === 'agent') setAgentFilter(access.effectiveAgentId);
+  }, [access.role, access.effectiveAgentId]);
+
   const filteredAppointments = useMemo(() => {
-    return agentFilter === 'all' ? appointments : appointments.filter((a) => a.agentId === agentFilter);
-  }, [appointments, agentFilter]);
+    return agentFilter === 'all' ? scopedAppointments : scopedAppointments.filter((a) => a.agentId === agentFilter);
+  }, [scopedAppointments, agentFilter]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('analytics', { detail: { event: 'calendar.switch_agent', agentId: agentFilter } }));
@@ -339,9 +351,12 @@ export default function AgentCalendar() {
             className="rounded-md border px-3 py-2 text-sm"
             value={agentFilter}
             onChange={(e) => setAgentFilter(e.target.value)}
+            disabled={!access.can('view_team')}
           >
-            <option value="all">Todos los agentes</option>
-            {mockTeamAgents.map((agent) => (
+            {access.can('view_team') && <option value="all">Todos los agentes</option>}
+            {mockTeamAgents
+              .filter((agent) => access.can('view_team') || agent.id === access.effectiveAgentId)
+              .map((agent) => (
               <option key={agent.id} value={agent.id}>
                 {agent.firstName} {agent.lastName}
               </option>

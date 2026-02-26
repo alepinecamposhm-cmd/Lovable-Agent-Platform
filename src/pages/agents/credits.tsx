@@ -45,6 +45,8 @@ import { downloadBlob } from '@/lib/credits/download';
 import { getCurrentUser } from '@/lib/agents/team/store';
 import { useAnimatedNumber } from '@/lib/credits/useAnimatedNumber';
 import type { CreditLedgerEntry } from '@/types/agents';
+import { useAccess } from '@/lib/permissions/useAccess';
+import { canDecreaseBudget, canIncreaseBudget, canManagePaymentMethod } from '@/lib/permissions/billing';
 
 const PER_PAGE = 10;
 const INVOICE_PER_PAGE = 10;
@@ -114,6 +116,7 @@ function LoadingRow() {
 
 export default function AgentCredits() {
   const currentUser = getCurrentUser();
+  const access = useAccess();
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState<'all' | 'credit' | 'debit'>('all');
@@ -128,6 +131,9 @@ export default function AgentCredits() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+  const canManagePayment = canManagePaymentMethod(access.role);
+  const canIncrease = canIncreaseBudget(access.role);
+  const canDecrease = canDecreaseBudget(access.role);
 
   const activeTab: 'overview' | 'invoices' =
     searchParams.get('tab') === 'invoices' ? 'invoices' : 'overview';
@@ -246,7 +252,9 @@ export default function AgentCredits() {
     try {
       await updateAccount({
         lowBalanceThreshold: typeof thresholdInput === 'number' ? thresholdInput : account?.lowBalanceThreshold,
-        currencyRate: typeof rateInput === 'number' ? rateInput : account?.currencyRate,
+        currencyRate: canManagePayment
+          ? (typeof rateInput === 'number' ? rateInput : account?.currencyRate)
+          : account?.currencyRate,
       });
       toast.success('Preferencias guardadas');
       track('credits_threshold_updated', { threshold: thresholdInput, rate: rateInput });
@@ -257,10 +265,37 @@ export default function AgentCredits() {
 
   const handleSaveRules = async () => {
     try {
+      const currentDailyLimit = account?.dailyLimit ?? 0;
+      const nextDailyLimit = typeof dailyLimitInput === 'number' ? dailyLimitInput : currentDailyLimit;
+
+      if (!canIncrease && nextDailyLimit > currentDailyLimit) {
+        toast.error('No tienes permisos para aumentar presupuesto');
+        return;
+      }
+      if (!canDecrease && nextDailyLimit < currentDailyLimit) {
+        toast.error('Solo Admin puede reducir presupuesto');
+        return;
+      }
+
       await saveRules({ rules: rulesState });
       await saveLimits({
-        dailyLimit: typeof dailyLimitInput === 'number' ? dailyLimitInput : account?.dailyLimit,
+        dailyLimit: nextDailyLimit,
       });
+      if (typeof window !== 'undefined' && nextDailyLimit !== currentDailyLimit) {
+        const key = 'agenthub_budget_audit_log';
+        const prev = JSON.parse(window.localStorage.getItem(key) || '[]') as unknown[];
+        const next = [
+          {
+            actorRole: access.role,
+            action: nextDailyLimit > currentDailyLimit ? 'increase_budget' : 'decrease_budget',
+            prevBudget: currentDailyLimit,
+            newBudget: nextDailyLimit,
+            ts: new Date().toISOString(),
+          },
+          ...prev,
+        ];
+        window.localStorage.setItem(key, JSON.stringify(next));
+      }
       toast.success('Reglas guardadas');
       track('credits_rules_saved', { rules: rulesState.length });
     } catch (e) {
@@ -500,6 +535,7 @@ export default function AgentCredits() {
                 min={0.1}
                 step="0.1"
                 value={rateInput}
+                disabled={!canManagePayment}
                 onChange={(e) => setRateInput(e.target.value === '' ? '' : Number(e.target.value))}
               />
               <span className="text-sm text-muted-foreground">$ por crédito</span>

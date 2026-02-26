@@ -32,26 +32,30 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUser } from "@/lib/agents/team/store";
+import type { Capability } from "@/lib/permissions/capabilities";
+import { useAccess } from "@/lib/permissions/useAccess";
+import { isPreviewEnabled } from "@/lib/permissions/previewRole";
+import { getPreviewPersonById } from "@/lib/permissions/mockPeopleCatalog";
 
 const mainNavItems = [
-  { title: "Dashboard", url: "/agents", icon: LayoutDashboard },
-  { title: "Inbox", url: "/agents/inbox", icon: MessageSquare, badge: 3 },
-  { title: "Leads", url: "/agents/leads", icon: Users, badge: 1 },
-  { title: "Tareas", url: "/agents/tasks", icon: CheckSquare, badge: 2 },
-  { title: "Calendario", url: "/agents/calendar", icon: Calendar },
-  { title: "Propiedades", url: "/agents/listings", icon: Building2 },
+  { title: "Dashboard", url: "/agents", icon: LayoutDashboard, cap: "view_dashboard" as Capability },
+  { title: "Inbox", url: "/agents/inbox", icon: MessageSquare, badge: 3, cap: "view_inbox" as Capability },
+  { title: "Leads", url: "/agents/leads", icon: Users, badge: 1, cap: "view_leads" as Capability },
+  { title: "Tareas", url: "/agents/tasks", icon: CheckSquare, badge: 2, cap: "view_tasks" as Capability },
+  { title: "Calendario", url: "/agents/calendar", icon: Calendar, cap: "view_calendar" as Capability },
+  { title: "Propiedades", url: "/agents/listings", icon: Building2, cap: "view_listings" as Capability },
 ];
 
 const secondaryNavItems = [
-  { title: "Créditos", url: "/agents/credits", icon: CreditCard },
+  { title: "Créditos", url: "/agents/credits", icon: CreditCard, cap: "view_billing" as Capability },
   // v2 lives here:
-  { title: "Equipo", url: "/agents/team-v2", icon: UsersRound },
-  { title: "Reportes", url: "/agents/reports", icon: BarChart3 },
+  { title: "Equipo", url: "/agents/team-v2", icon: UsersRound, cap: "view_team" as Capability },
+  { title: "Reportes", url: "/agents/reports", icon: BarChart3, cap: "view_reports_self" as Capability },
 ];
 
 const comparisonNavItems = [
-  { title: "Equipo (v1)", url: "/agents/team", icon: UsersRound },
-  { title: "Equipo (v2)", url: "/agents/team-v2", icon: UsersRound },
+  { title: "Equipo (v1)", url: "/agents/team", icon: UsersRound, cap: "view_team" as Capability },
+  { title: "Equipo (v2)", url: "/agents/team-v2", icon: UsersRound, cap: "view_team" as Capability },
 ];
 
 export function LovableAgentSidebar() {
@@ -60,6 +64,15 @@ export function LovableAgentSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const user = getCurrentUser();
+  const access = useAccess();
+  const visibleComparisonItems = isPreviewEnabled()
+    ? comparisonNavItems.filter((item) => access.can(item.cap))
+    : [];
+  const previewPerson = getPreviewPersonById(access.effectivePersonaId);
+  const footerName = previewPerson?.name || user.name || "Agente";
+  const footerEmail = previewPerson?.email || user.email;
+  const footerAvatar = previewPerson?.avatar || user.avatarUrl || "";
+  const footerRole = access.role === "leader" ? "Líder" : access.role === "admin" ? "Admin" : "Agente";
 
   const isActive = (path: string) => {
     if (path === "/agents") return location.pathname === "/agents" || location.pathname.startsWith("/agents/overview");
@@ -68,7 +81,7 @@ export function LovableAgentSidebar() {
     return location.pathname.startsWith(path);
   };
 
-  const initials = (user.name || user.email || "A")
+  const initials = (footerName || footerEmail || "A")
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
@@ -100,6 +113,7 @@ export function LovableAgentSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
+                access.can(item.cap) ? (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -121,6 +135,7 @@ export function LovableAgentSidebar() {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                ) : null
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -131,6 +146,7 @@ export function LovableAgentSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {secondaryNavItems.map((item) => (
+                access.can(item.cap) ? (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -143,45 +159,49 @@ export function LovableAgentSidebar() {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                ) : null
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel className={cn(isCollapsed && "sr-only")}>Comparación</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {comparisonNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                    className="w-full justify-start"
-                  >
-                    <NavLink to={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span className="flex-1">{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {visibleComparisonItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className={cn(isCollapsed && "sr-only")}>Comparación</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visibleComparisonItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.url)}
+                      className="w-full justify-start"
+                    >
+                      <NavLink to={item.url}>
+                        <item.icon className="h-4 w-4" />
+                        {!isCollapsed && <span className="flex-1">{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
         <div className={cn("flex items-center gap-3", isCollapsed && "flex-col gap-2")}>
           <Avatar className="h-8 w-8">
-            <AvatarImage src={user.avatarUrl || ""} alt={user.name || user.email} />
+            <AvatarImage src={footerAvatar} alt={footerName || footerEmail} />
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
 
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user.name || "Agente"}</p>
-              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+              <p className="text-sm font-medium truncate">{footerName}</p>
+              <p className="text-xs text-muted-foreground truncate">{footerEmail}</p>
+              <p className="text-[10px] text-muted-foreground">{footerRole}</p>
             </div>
           )}
 

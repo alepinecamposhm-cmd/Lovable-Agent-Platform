@@ -1,8 +1,8 @@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getCurrentUser } from '@/lib/agents/team/store';
 import { track } from '@/lib/agents/reports/analytics';
 import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAccess } from '@/lib/permissions/useAccess';
 
 type ReportsTab = 'overview' | 'leads' | 'experience' | 'roi' | 'team';
 
@@ -25,9 +25,8 @@ function getActiveTab(pathname: string): ReportsTab {
 export function ReportsSubnav() {
   const location = useLocation();
   const navigate = useNavigate();
-  const currentUser = getCurrentUser();
-
-  const isLeader = currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'broker';
+  const access = useAccess();
+  const isLeader = access.can('view_reports_team');
 
   const active = useMemo(() => getActiveTab(location.pathname), [location.pathname]);
 
@@ -53,4 +52,3 @@ export function ReportsSubnav() {
     </div>
   );
 }
-

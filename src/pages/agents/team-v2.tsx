@@ -64,6 +64,7 @@ import {
 import { TeamMemberRole, TeamMemberStatus, LeadRoutingRule, TeamActivityEvent } from '@/types';
 import { RoutingRulesTable } from '@/components/team/RoutingRulesTable';
 import { PerformanceTable } from '@/components/team/PerformanceTable';
+import type { TeamPerformanceData } from '@/components/team/PerformanceTable';
 import { PendingInvitations, PendingInvitation } from '@/components/team/PendingInvitations';
 import { PauseMemberDialog, ActivateMemberDialog } from '@/components/team/PauseMemberDialog';
 import { RemoveMemberDialog } from '@/components/team/RemoveMemberDialog';
@@ -228,6 +229,20 @@ export default function TeamV2() {
   // Sprint 9 state
   const [comparisonSheetOpen, setComparisonSheetOpen] = useState(false);
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const leadLimitByAgent = useMemo<Record<string, number>>(
+    () => ({
+      // Force 3 visual capacity states in V2 mock:
+      // Carlos 1/2 (green), Sofia 2/2 (amber), Pedro 1/9 (low).
+      'agent-001': 2,
+      'agent-002': 12,
+      'agent-003': 10,
+      'agent-004': 2,
+      'agent-005': 9,
+      'agent-006': 11,
+      'agent-007': 14,
+    }),
+    []
+  );
 
   // Mock schedules for agents
   const [agentSchedules] = useState<Record<string, WeeklySchedule>>({
@@ -287,8 +302,9 @@ const agentActiveLeads = useMemo(() => {
         name: a.name,
         avatar: a.avatar,
         activeLeads: agentActiveLeads[a.id] ?? 0,
+        leadLimit: leadLimitByAgent[a.id] ?? 10,
       }));
-  }, [agents, agentActiveLeads]);
+  }, [agents, agentActiveLeads, leadLimitByAgent]);
 
   const goToPerformance = useCallback(() => {
     setActiveTab("performance");
@@ -304,6 +320,12 @@ const agentActiveLeads = useMemo(() => {
     }, 50);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (highlightTimeout.current) clearTimeout(highlightTimeout.current);
+    };
+  }, []);
+
 
   const teamAverageLeads = useMemo(() => {
     const activeIds = activeAgents.map((a) => a.id);
@@ -314,6 +336,42 @@ const agentActiveLeads = useMemo(() => {
 
   // Bulk helpers
   const memberNames = new Map(agents.map((a) => [a.id, a.name]));
+
+  const performanceMetricsById = useMemo(() => {
+    return new Map(mockTeamPerformance.map((row) => [row.id, row]));
+  }, []);
+
+  const normalizedPerformanceData = useMemo<TeamPerformanceData[]>(() => {
+    const normalizePct = (value: number) => Math.max(40, Math.min(95, value));
+    return agents.map((agent, idx) => {
+      const existing = performanceMetricsById.get(agent.id);
+      if (existing) return existing;
+
+      const active = agentActiveLeads[agent.id] ?? 0;
+      const leads = Math.max(0, active * 3);
+      const responseRate = normalizePct(40 + ((idx * 11) % 56));
+      const respondedUnder5Min = leads > 0 ? Math.round((responseRate / 100) * leads) : 0;
+      const appointmentsScheduled = Math.max(0, Math.min(15, Math.round(leads * 0.35)));
+      const conversions = Math.max(0, Math.min(30, Math.round(10 + (idx * 3) % 21)));
+      const score = Math.max(50, Math.min(100, Math.round(58 + (idx * 7) % 43)));
+
+      return {
+        id: agent.id,
+        name: agent.name,
+        email: agent.email,
+        avatar: agent.avatar,
+        leadsReceived: leads,
+        respondedUnder5Min,
+        appointmentsScheduled,
+        conversions,
+        score,
+      };
+    });
+  }, [agents, agentActiveLeads, performanceMetricsById]);
+
+  const missingPerformanceMetricsCount = useMemo(() => {
+    return agents.filter((agent) => !performanceMetricsById.has(agent.id)).length;
+  }, [agents, performanceMetricsById]);
 
   const isSelectable = (agent: typeof agents[0]) =>
     agent.role !== 'lider' && agent.status !== 'invitado';
@@ -673,12 +731,14 @@ const agentActiveLeads = useMemo(() => {
 
       {/* Team Members & Routing */}
       
-      <TeamWorkloadSummary
-        teamName="Equipo Polanco"
-        agents={workloadAgents}
-        onMoreClick={goToPerformance}
-        className="mb-4"
-      />
+      {activeTab !== "performance" && (
+        <TeamWorkloadSummary
+          teamName="Equipo Polanco"
+          agents={workloadAgents}
+          onMoreClick={goToPerformance}
+          className="mb-4"
+        />
+      )}
 
 <div className="mt-2">
 <Tabs value={activeTab} onValueChange={(v) => {
@@ -998,13 +1058,25 @@ const agentActiveLeads = useMemo(() => {
 
         <TabsContent value="performance" className="mt-4 space-y-4">
           <div id="team-performance" className="scroll-mt-24" />
-          <PerformanceTable
-            data={mockTeamPerformance}
-            totalAgents={agents.length}
-            onCompare={() => setComparisonSheetOpen(true)}
-            compareDisabled={agents.length < 2}
-            highlight={highlightPerformance}
-          />
+          <div
+            className={cn(
+              "space-y-4 transition duration-300 ease-out rounded-lg",
+              highlightPerformance ? "ring-2 ring-primary/30" : undefined
+            )}
+          >
+            <TeamWorkloadSummary
+              teamName="Equipo Polanco"
+              agents={workloadAgents}
+              mode="full"
+            />
+            <PerformanceTable
+              data={normalizedPerformanceData}
+              totalAgents={agents.length}
+              missingMetricsCount={missingPerformanceMetricsCount}
+              onCompare={() => setComparisonSheetOpen(true)}
+              compareDisabled={agents.length < 2}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="activity" className="mt-4">
@@ -1112,8 +1184,3 @@ const agentActiveLeads = useMemo(() => {
     </div>
   );
 }
-  useEffect(() => {
-    return () => {
-      if (highlightTimeout.current) clearTimeout(highlightTimeout.current);
-    };
-  }, []);

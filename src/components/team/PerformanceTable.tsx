@@ -47,12 +47,13 @@ export interface TeamPerformanceData {
 interface PerformanceTableProps {
   data: TeamPerformanceData[];
   totalAgents?: number;
+  missingMetricsCount?: number;
   onCompare?: () => void;
   compareDisabled?: boolean;
   highlight?: boolean;
 }
 
-export function PerformanceTable({ data, totalAgents, onCompare, compareDisabled, highlight }: PerformanceTableProps) {
+export function PerformanceTable({ data, totalAgents, missingMetricsCount, onCompare, compareDisabled, highlight }: PerformanceTableProps) {
   const navigate = useNavigate();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'score', desc: true }]);
   const [period, setPeriod] = useState<'month' | 'lastMonth' | 'year'>('month');
@@ -242,9 +243,8 @@ export function PerformanceTable({ data, totalAgents, onCompare, compareDisabled
     navigate(`/agents/team/member/${memberId}`);
   };
 
-  const shownCount = data.length;
   const total = totalAgents ?? data.length;
-  const missing = Math.max(total - shownCount, 0);
+  const missing = Math.max(missingMetricsCount ?? 0, 0);
 
   return (
     <Card className={cn("transition duration-300", highlight ? "ring-2 ring-primary/30" : undefined)}>
@@ -259,7 +259,7 @@ export function PerformanceTable({ data, totalAgents, onCompare, compareDisabled
               Métricas de desempeño de cada miembro del equipo
             </CardDescription>
             <p className="text-xs text-muted-foreground">
-              Mostrando {shownCount} de {total}
+              Mostrando {total} agentes
               {missing > 0 && <span className="ml-1">(faltan métricas para {missing})</span>}
             </p>
           </div>

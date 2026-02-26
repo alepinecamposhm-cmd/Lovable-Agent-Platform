@@ -44,6 +44,8 @@ export interface TeamPerformanceData {
   score: number;
 }
 
+export type PerformanceTimeframe = 'day' | 'week' | 'month' | 'year';
+
 interface PerformanceTableProps {
   data: TeamPerformanceData[];
   totalAgents?: number;
@@ -51,12 +53,22 @@ interface PerformanceTableProps {
   onCompare?: () => void;
   compareDisabled?: boolean;
   highlight?: boolean;
+  timeframe: PerformanceTimeframe;
+  onTimeframeChange: (value: PerformanceTimeframe) => void;
 }
 
-export function PerformanceTable({ data, totalAgents, missingMetricsCount, onCompare, compareDisabled, highlight }: PerformanceTableProps) {
+export function PerformanceTable({
+  data,
+  totalAgents,
+  missingMetricsCount,
+  onCompare,
+  compareDisabled,
+  highlight,
+  timeframe,
+  onTimeframeChange,
+}: PerformanceTableProps) {
   const navigate = useNavigate();
   const [sorting, setSorting] = useState<SortingState>([{ id: 'score', desc: true }]);
-  const [period, setPeriod] = useState<'month' | 'lastMonth' | 'year'>('month');
 
   const topPerformerId = useMemo(() => {
     if (data.length === 0) return null;
@@ -122,7 +134,7 @@ export function PerformanceTable({ data, totalAgents, missingMetricsCount, onCom
           onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
           className="-ml-4"
         >
-          Leads
+          Leads recibidos
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
@@ -234,7 +246,7 @@ export function PerformanceTable({ data, totalAgents, missingMetricsCount, onCom
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `performance_equipo_${period}.csv`;
+    link.download = `performance_equipo_${timeframe}.csv`;
     link.click();
     toast.success('Archivo CSV descargado');
   };
@@ -272,14 +284,15 @@ export function PerformanceTable({ data, totalAgents, missingMetricsCount, onCom
               <ArrowUpDown className="mr-2 h-4 w-4" />
               Comparar
             </Button>
-            <Select value={period} onValueChange={(v: 'month' | 'lastMonth' | 'year') => setPeriod(v)}>
+            <Select value={timeframe} onValueChange={(v: PerformanceTimeframe) => onTimeframeChange(v)}>
               <SelectTrigger className="w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="month">Este mes</SelectItem>
-                <SelectItem value="lastMonth">Mes pasado</SelectItem>
-                <SelectItem value="year">Este año</SelectItem>
+                <SelectItem value="day">Día</SelectItem>
+                <SelectItem value="week">Semana</SelectItem>
+                <SelectItem value="month">Mes</SelectItem>
+                <SelectItem value="year">Año</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" onClick={exportToCSV}>

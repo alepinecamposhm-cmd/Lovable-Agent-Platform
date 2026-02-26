@@ -17,7 +17,7 @@ export type TeamWorkloadAgent = {
   name: string;
   avatar?: string;
   activeLeads: number;
-  leadLimit?: number;
+  leadLimit: number;
 };
 
 type Props = {
@@ -27,6 +27,7 @@ type Props = {
   className?: string;
   mode?: "top" | "full";
   showTitle?: boolean;
+  teamDefaultLeadLimit?: number;
 };
 
 function initials(name: string) {
@@ -54,6 +55,7 @@ export function TeamWorkloadSummary({
   className,
   mode = "top",
   showTitle = true,
+  teamDefaultLeadLimit = 10,
 }: Props) {
   const eligible = (agents ?? []).slice().sort((a, b) => b.activeLeads - a.activeLeads);
   if (eligible.length === 0) return null;
@@ -86,7 +88,8 @@ export function TeamWorkloadSummary({
           <div className="space-y-3">
             {visible.map((agent) => {
               const leads = agent.activeLeads ?? 0;
-              const limit = Math.max(agent.leadLimit ?? 10, 1);
+              const safeTeamDefault = teamDefaultLeadLimit > 0 ? teamDefaultLeadLimit : 10;
+              const limit = Math.max(agent.leadLimit > 0 ? agent.leadLimit : safeTeamDefault, 1);
               const pct = Math.min(leads / limit, 1);
               const fillPct = Math.max(0, Math.min(100, pct * 100));
               const t = toneByCapacity(pct);

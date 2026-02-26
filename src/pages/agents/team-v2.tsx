@@ -64,7 +64,7 @@ import {
 import { TeamMemberRole, TeamMemberStatus, LeadRoutingRule, TeamActivityEvent } from '@/types';
 import { RoutingRulesTable } from '@/components/team/RoutingRulesTable';
 import { PerformanceTable } from '@/components/team/PerformanceTable';
-import type { TeamPerformanceData } from '@/components/team/PerformanceTable';
+import type { PerformanceTimeframe, TeamPerformanceData } from '@/components/team/PerformanceTable';
 import { PendingInvitations, PendingInvitation } from '@/components/team/PendingInvitations';
 import { PauseMemberDialog, ActivateMemberDialog } from '@/components/team/PauseMemberDialog';
 import { RemoveMemberDialog } from '@/components/team/RemoveMemberDialog';
@@ -183,6 +183,23 @@ const initialTeamAgents = [
 
 const DEFAULT_TEAM_NAME = 'Equipo de Carlos Martínez';
 
+const TIMEFRAME_SCALE: Record<PerformanceTimeframe, number> = {
+  day: 1,
+  week: 4,
+  month: 12,
+  year: 42,
+};
+
+const hashString = (value: string): number => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) % 100000;
+  }
+  return Math.abs(hash);
+};
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
 export default function TeamV2() {
   const navigate = useNavigate();
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -216,6 +233,7 @@ export default function TeamV2() {
   const [teamSettings, setTeamSettings] = useState({
     name: mockTeam.name,
     description: '',
+    defaultLeadLimit: 10,
   });
 
   // Activity log state
@@ -229,11 +247,12 @@ export default function TeamV2() {
   // Sprint 9 state
   const [comparisonSheetOpen, setComparisonSheetOpen] = useState(false);
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [performanceTimeframe, setPerformanceTimeframe] = useState<PerformanceTimeframe>('month');
   const leadLimitByAgent = useMemo<Record<string, number>>(
     () => ({
-      // Force 3 visual capacity states in V2 mock:
-      // Carlos 1/2 (green), Sofia 2/2 (amber), Pedro 1/9 (low).
-      'agent-001': 2,
+      // Force clear capacity states in V2 mock:
+      // Carlos 1/14 (low), Sofia 2/2 (overload), Pedro 1/9 (low).
+      'agent-001': 14,
       'agent-002': 12,
       'agent-003': 10,
       'agent-004': 2,
@@ -243,6 +262,13 @@ export default function TeamV2() {
     }),
     []
   );
+
+  const resolveLeadLimit = useCallback((agentId: string) => {
+    const agentLeadLimit = leadLimitByAgent[agentId];
+    return (agentLeadLimit && agentLeadLimit > 0)
+      ? agentLeadLimit
+      : teamSettings.defaultLeadLimit;
+  }, [leadLimitByAgent, teamSettings.defaultLeadLimit]);
 
   // Mock schedules for agents
   const [agentSchedules] = useState<Record<string, WeeklySchedule>>({
@@ -302,9 +328,9 @@ const agentActiveLeads = useMemo(() => {
         name: a.name,
         avatar: a.avatar,
         activeLeads: agentActiveLeads[a.id] ?? 0,
-        leadLimit: leadLimitByAgent[a.id] ?? 10,
+        leadLimit: resolveLeadLimit(a.id),
       }));
-  }, [agents, agentActiveLeads, leadLimitByAgent]);
+  }, [agents, agentActiveLeads, resolveLeadLimit]);
 
   const goToPerformance = useCallback(() => {
     setActiveTab("performance");
@@ -327,13 +353,6 @@ const agentActiveLeads = useMemo(() => {
   }, []);
 
 
-  const teamAverageLeads = useMemo(() => {
-    const activeIds = activeAgents.map((a) => a.id);
-    if (activeIds.length === 0) return 1;
-    const total = activeIds.reduce((sum, id) => sum + (agentActiveLeads[id] || 0), 0);
-    return total / activeIds.length;
-  }, [activeAgents, agentActiveLeads]);
-
   // Bulk helpers
   const memberNames = new Map(agents.map((a) => [a.id, a.name]));
 
@@ -342,39 +361,44 @@ const agentActiveLeads = useMemo(() => {
   }, []);
 
   const normalizedPerformanceData = useMemo<TeamPerformanceData[]>(() => {
-    const normalizePct = (value: number) => Math.max(40, Math.min(95, value));
-    return agents.map((agent, idx) => {
+    return agents.map((agent) => {
       const existing = performanceMetricsById.get(agent.id);
-      if (existing) return existing;
-
       const active = agentActiveLeads[agent.id] ?? 0;
-      const leads = Math.max(0, active * 3);
-      const responseRate = normalizePct(40 + ((idx * 11) % 56));
-      const respondedUnder5Min = leads > 0 ? Math.round((responseRate / 100) * leads) : 0;
-      const appointmentsScheduled = Math.max(0, Math.min(15, Math.round(leads * 0.35)));
-      const conversions = Math.max(0, Math.min(30, Math.round(10 + (idx * 3) % 21)));
-      const score = Math.max(50, Math.min(100, Math.round(58 + (idx * 7) % 43)));
+      const seed = hashString(`${agent.id}:${performanceTimeframe}`);
+      const timeframeScale = TIMEFRAME_SCALE[performanceTimeframe];
+      const baseLeads = existing?.leadsReceived ?? Math.max(active, 1);
+      const leadsReceived = clamp(
+        Math.round(baseLeads * timeframeScale + (seed % (timeframeScale + 5))),
+        0,
+        250
+      );
+      const responseRate = clamp(40 + (seed % 56), 40, 95);
+      const respondedUnder5Min = leadsReceived > 0
+        ? Math.round((responseRate / 100) * leadsReceived)
+        : 0;
+      const appointmentsScheduled = clamp(Math.round((seed % 7) + leadsReceived * 0.12), 0, 15);
+      const conversions = clamp(5 + (seed % 26), 0, 30);
+      const score = clamp(50 + (seed % 51), 50, 100);
 
       return {
         id: agent.id,
         name: agent.name,
         email: agent.email,
         avatar: agent.avatar,
-        leadsReceived: leads,
+        leadsReceived,
         respondedUnder5Min,
         appointmentsScheduled,
         conversions,
         score,
       };
     });
-  }, [agents, agentActiveLeads, performanceMetricsById]);
+  }, [agents, agentActiveLeads, performanceMetricsById, performanceTimeframe]);
 
   const missingPerformanceMetricsCount = useMemo(() => {
     return agents.filter((agent) => !performanceMetricsById.has(agent.id)).length;
   }, [agents, performanceMetricsById]);
 
-  const isSelectable = (agent: typeof agents[0]) =>
-    agent.role !== 'lider' && agent.status !== 'invitado';
+  const isSelectable = (_agent: typeof agents[0]) => true;
 
   const selectableAgents = agents.filter(isSelectable);
 
@@ -518,7 +542,7 @@ const agentActiveLeads = useMemo(() => {
   };
 
   const handleSaveSettings = (settings: { name: string; description: string }) => {
-    setTeamSettings(settings);
+    setTeamSettings((prev) => ({ ...prev, ...settings }));
     toast.success('Configuración del equipo actualizada');
   };
 
@@ -735,6 +759,7 @@ const agentActiveLeads = useMemo(() => {
         <TeamWorkloadSummary
           teamName="Equipo Polanco"
           agents={workloadAgents}
+          teamDefaultLeadLimit={teamSettings.defaultLeadLimit}
           onMoreClick={goToPerformance}
           className="mb-4"
         />
@@ -799,42 +824,42 @@ const agentActiveLeads = useMemo(() => {
                     isSelected && 'ring-2 ring-primary'
                   )}
                 >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-4">
-                      {/* Bulk checkbox */}
-                      <div className="relative">
-                        {isLeader && canSelect && (
-                          <div className="absolute -top-1 -left-1 z-10">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleMemberSelection(agent.id)}
-                              className="bg-background/80 backdrop-blur-sm"
-                              aria-label={`Seleccionar a ${agent.name}`}
-                            />
-                          </div>
-                        )}
-                        <Avatar className="h-12 w-12">
+                  <CardContent className="relative p-4">
+                    {isLeader && canSelect && (
+                      <div className="absolute top-3 left-3 z-10 flex h-8 w-8 items-center justify-center">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleMemberSelection(agent.id)}
+                          aria-label={`Seleccionar a ${agent.name}`}
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-[auto,1fr,auto] items-start gap-3 pt-1">
+                      <div className="w-6" />
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Avatar className="h-9 w-9 shrink-0 md:h-10 md:w-10">
                           <AvatarImage src={agent.avatar} />
                           <AvatarFallback>
                             {agent.name.split(' ').map(n => n[0]).join('')}
                           </AvatarFallback>
                         </Avatar>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="font-semibold truncate">{agent.name}</h3>
-                            <p className="text-sm text-muted-foreground truncate">
-                              {agent.email}
-                            </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <h3 className="text-sm font-semibold leading-tight truncate">{agent.name}</h3>
                           </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
+                          <p className="text-xs text-muted-foreground truncate">
+                            {agent.email}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-1">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => navigate(`/agents/team-v2/member/${agent.id}`)}>
                                 <User className="mr-2 h-4 w-4" />
                                 Ver perfil
@@ -879,11 +904,12 @@ const agentActiveLeads = useMemo(() => {
                                   </DropdownMenuItem>
                                 </>
                               )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
 
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-3 pl-9">
                           <div className={cn(
                             "flex items-center gap-1 text-sm",
                             roleConfig[agent.role].color
@@ -902,8 +928,8 @@ const agentActiveLeads = useMemo(() => {
 
                         <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t">
                           <div>
-                            <p className="text-2xl font-bold">{agent.leadsThisMonth}</p>
-                            <p className="text-xs text-muted-foreground">Leads del mes</p>
+                            <p className="text-2xl font-bold">{agentActiveLeads[agent.id] || 0}</p>
+                            <p className="text-xs text-muted-foreground">Leads activos</p>
                           </div>
                           <div>
                             <p className="text-2xl font-bold">{agent.conversionRate}%</p>
@@ -915,7 +941,8 @@ const agentActiveLeads = useMemo(() => {
                         <div className="mt-3">
                           <WorkloadIndicator
                             agentLeads={agentActiveLeads[agent.id] || 0}
-                            teamAverage={teamAverageLeads}
+                            leadLimit={resolveLeadLimit(agent.id)}
+                            teamDefaultLeadLimit={teamSettings.defaultLeadLimit}
                             isPaused={agent.status === 'pausado'}
                           />
                         </div>
@@ -970,8 +997,6 @@ const agentActiveLeads = useMemo(() => {
                             </TooltipProvider>
                           </div>
                         )}
-                      </div>
-                    </div>
                   </CardContent>
                 </Card>
               );
@@ -1067,6 +1092,7 @@ const agentActiveLeads = useMemo(() => {
             <TeamWorkloadSummary
               teamName="Equipo Polanco"
               agents={workloadAgents}
+              teamDefaultLeadLimit={teamSettings.defaultLeadLimit}
               mode="full"
             />
             <PerformanceTable
@@ -1075,6 +1101,8 @@ const agentActiveLeads = useMemo(() => {
               missingMetricsCount={missingPerformanceMetricsCount}
               onCompare={() => setComparisonSheetOpen(true)}
               compareDisabled={agents.length < 2}
+              timeframe={performanceTimeframe}
+              onTimeframeChange={setPerformanceTimeframe}
             />
           </div>
         </TabsContent>

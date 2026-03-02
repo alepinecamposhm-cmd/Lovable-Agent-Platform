@@ -4,7 +4,6 @@ import { BarChart3 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -25,6 +24,7 @@ type Props = {
   agents: TeamWorkloadAgent[];
   onMoreClick?: () => void;
   className?: string;
+  variant?: "compact" | "expandedOverlay";
   mode?: "top" | "full";
   showTitle?: boolean;
   teamDefaultLeadLimit?: number;
@@ -53,21 +53,23 @@ export function TeamWorkloadSummary({
   agents,
   onMoreClick,
   className,
+  variant = "compact",
   mode = "top",
   showTitle = true,
   teamDefaultLeadLimit = 10,
 }: Props) {
+  const resolvedMode = mode === "full" || variant === "expandedOverlay" ? "full" : "top";
   const eligible = (agents ?? []).slice().sort((a, b) => b.activeLeads - a.activeLeads);
   if (eligible.length === 0) return null;
 
-  const visible = mode === "full" ? eligible : eligible.slice(0, Math.min(3, eligible.length));
-  const hasMore = mode === "top" && eligible.length > 3;
+  const visible = resolvedMode === "full" ? eligible : eligible.slice(0, Math.min(3, eligible.length));
+  const hasMore = resolvedMode === "top" && eligible.length > 3;
   const extraCount = Math.max(eligible.length - visible.length, 0);
 
   const totalLeads = eligible.reduce((sum, a) => sum + (a.activeLeads ?? 0), 0);
 
   return (
-    <Card className={cn("mt-4", className)}>
+    <Card className={className}>
       {showTitle && (
         <CardHeader className="py-4">
           <CardTitle className="flex items-center gap-2 text-base">

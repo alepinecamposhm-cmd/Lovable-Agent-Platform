@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
@@ -73,11 +73,11 @@ import { ChangeRoleDialog } from '@/components/team/ChangeRoleDialog';
 import { TeamSettingsSheet } from '@/components/team/TeamSettingsSheet';
 import { ReassignLeadsDialog } from '@/components/team/ReassignLeadsDialog';
 import { TeamActivityLog } from '@/components/team/TeamActivityLog';
-import { TeamLeadsOverview } from '@/components/team/TeamLeadsOverview';
 import { TeamPlanLimitBadge } from '@/components/team/TeamPlanLimitBadge';
 import { BulkActionToolbar } from '@/components/team/BulkActionToolbar';
 import { TeamOnboardingChecklist } from '@/components/team/TeamOnboardingChecklist';
 import { TeamWorkloadSummary } from "@/components/team/TeamWorkloadSummary";
+import { TeamLoadThermometer } from '@/components/team/TeamLoadThermometer';
 import { WorkloadIndicator } from '@/components/team/WorkloadIndicator';
 import { getNoteForMember } from '@/components/team/MemberNotesCard';
 import { ScheduleCompactDots } from '@/components/team/AgentScheduleGrid';
@@ -243,8 +243,6 @@ export default function TeamV2() {
 
   // Onboarding tracking
   const [hasVisitedPerformance, setHasVisitedPerformance] = useState(false);
-  const [highlightPerformance, setHighlightPerformance] = useState(false);
-  const highlightTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sprint 9 state
   const [comparisonSheetOpen, setComparisonSheetOpen] = useState(false);
@@ -333,27 +331,6 @@ const agentActiveLeads = useMemo(() => {
         leadLimit: resolveLeadLimit(a.id),
       }));
   }, [agents, agentActiveLeads, resolveLeadLimit]);
-
-  const goToPerformance = useCallback(() => {
-    setActiveTab("performance");
-    setHasVisitedPerformance(true);
-    if (highlightTimeout.current) clearTimeout(highlightTimeout.current);
-    setHighlightPerformance(true);
-    highlightTimeout.current = setTimeout(() => setHighlightPerformance(false), 900);
-    setTimeout(() => {
-      document.getElementById("team-performance")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, 50);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (highlightTimeout.current) clearTimeout(highlightTimeout.current);
-    };
-  }, []);
-
 
   // Bulk helpers
   const memberNames = new Map(agents.map((a) => [a.id, a.name]));
@@ -760,20 +737,8 @@ const agentActiveLeads = useMemo(() => {
         onResend={handleResendInvitation}
       />
 
-      {/* Team Members & Routing */}
-      
-      {activeTab !== "performance" && (
-        <TeamWorkloadSummary
-          teamName="Equipo Polanco"
-          agents={workloadAgents}
-          teamDefaultLeadLimit={teamSettings.defaultLeadLimit}
-          onMoreClick={goToPerformance}
-          className="mb-4"
-        />
-      )}
-
-<div className="mt-2">
-<Tabs value={activeTab} onValueChange={(v) => {
+      <div className="mt-2">
+      <Tabs value={activeTab} onValueChange={(v) => {
         setActiveTab(v);
         if (v === 'performance') setHasVisitedPerformance(true);
       }}>
@@ -795,9 +760,9 @@ const agentActiveLeads = useMemo(() => {
             Actividad
           </TabsTrigger>
           {isLeader && (
-            <TabsTrigger value="leads">
+            <TabsTrigger value="lead-load">
               <ArrowLeftRight className="mr-2 h-4 w-4" />
-              Leads
+              Carga de Leads
             </TabsTrigger>
           )}
         </TabsList>
@@ -1096,18 +1061,7 @@ const agentActiveLeads = useMemo(() => {
 
         <TabsContent value="performance" className="mt-4 space-y-4">
           <div id="team-performance" className="scroll-mt-24" />
-          <div
-            className={cn(
-              "space-y-4 transition duration-300 ease-out rounded-lg",
-              highlightPerformance ? "ring-2 ring-primary/30" : undefined
-            )}
-          >
-            <TeamWorkloadSummary
-              teamName="Equipo Polanco"
-              agents={workloadAgents}
-              teamDefaultLeadLimit={teamSettings.defaultLeadLimit}
-              mode="full"
-            />
+          <div className="space-y-4 rounded-lg">
             <PerformanceTable
               data={normalizedPerformanceData}
               totalAgents={agents.length}
@@ -1125,8 +1079,14 @@ const agentActiveLeads = useMemo(() => {
         </TabsContent>
 
         {isLeader && (
-          <TabsContent value="leads" className="mt-4">
-            <TeamLeadsOverview agents={agents} leads={mockLeads} />
+          <TabsContent value="lead-load" className="mt-4 space-y-4">
+            <TeamLoadThermometer agents={workloadAgents} />
+            <TeamWorkloadSummary
+              teamName="Equipo Polanco"
+              agents={workloadAgents}
+              mode="full"
+              teamDefaultLeadLimit={teamSettings.defaultLeadLimit}
+            />
           </TabsContent>
         )}
       </Tabs>

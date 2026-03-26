@@ -23,7 +23,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Progress } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -87,6 +86,10 @@ import { currentAgent } from '@/data/mockData';
 import { toast } from 'sonner';
 import type { WeeklySchedule } from '@/types';
 import { useAccess } from '@/lib/permissions/useAccess';
+import {
+  buildTeamWorkloadMetrics,
+  getTeamWorkloadToneClasses,
+} from '@/lib/team/buildTeamWorkloadMetrics';
 
 const roleConfig: Record<TeamMemberRole, { label: string; icon: React.ReactNode; color: string }> = {
   lider: { label: 'Líder', icon: <Crown className="h-4 w-4" />, color: 'text-yellow-500' },
@@ -331,6 +334,29 @@ const agentActiveLeads = useMemo(() => {
         leadLimit: resolveLeadLimit(a.id),
       }));
   }, [agents, agentActiveLeads, resolveLeadLimit]);
+  const teamWorkloadMetrics = useMemo(
+    () => buildTeamWorkloadMetrics(workloadAgents),
+    [workloadAgents]
+  );
+  const teamWorkloadTone = useMemo(
+    () => getTeamWorkloadToneClasses(teamWorkloadMetrics.tone),
+    [teamWorkloadMetrics.tone]
+  );
+  const teamCapacityChip = useMemo(() => {
+    if (teamWorkloadMetrics.overloadedAgentsCount > 0) {
+      return {
+        label: `Sobrecarga: ${teamWorkloadMetrics.overloadedAgentsCount}`,
+        className:
+          'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-200/80',
+      };
+    }
+
+    return {
+      label: 'Estable',
+      className:
+        'border-[#234B3B]/30 bg-[#234B3B]/10 text-[#234B3B] hover:bg-[#234B3B]/15',
+    };
+  }, [teamWorkloadMetrics.overloadedAgentsCount]);
 
   // Bulk helpers
   const memberNames = new Map(agents.map((a) => [a.id, a.name]));
@@ -719,13 +745,38 @@ const agentActiveLeads = useMemo(() => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Capacidad</CardTitle>
-            <Progress value={75} className="w-16" />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    className={cn(
+                      'h-6 rounded-full px-2.5 text-[11px] font-medium whitespace-nowrap shadow-none transition-colors',
+                      teamCapacityChip.className
+                    )}
+                  >
+                    {teamCapacityChip.label}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{teamWorkloadMetrics.status}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {teamWorkloadMetrics.overloadedAgentsCount} agente(s) sobrecargado(s).
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">75%</div>
-            <p className="text-xs text-muted-foreground">
-              de capacidad de leads
+          <CardContent className="pt-0">
+            <div className="text-2xl font-bold">{teamWorkloadMetrics.teamCapacityPct}%</div>
+            <p className="mb-2 text-xs text-muted-foreground">
+              de capacidad de leads (global)
             </p>
+            <div className={cn('h-2 w-full overflow-hidden rounded-full', teamWorkloadTone.trackClassName)}>
+              <div
+                className={cn('h-full rounded-full transition-colors duration-300', teamWorkloadTone.barClassName)}
+                style={{ width: `${teamWorkloadMetrics.teamCapacityFillPct}%` }}
+              />
+            </div>
           </CardContent>
         </Card>
       </div>

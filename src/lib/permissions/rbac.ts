@@ -11,6 +11,7 @@ const leaderCaps = new Set<Capability>([
   'view_leads',
   'view_listings',
   'view_team',
+  'manage_team_settings',
   'manage_team_invites',
   'manage_team_roles',
   'reset_agent_password',

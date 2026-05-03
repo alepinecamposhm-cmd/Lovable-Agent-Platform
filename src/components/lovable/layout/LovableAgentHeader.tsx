@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Search, Bell, Command, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ import { mockNotifications } from "@/data/mockData";
 import { cn } from "@/lib/utils";
 import { RolePreviewTabs } from "@/components/auth/RolePreviewTabs";
 import { PersonaPreviewSelect } from "@/components/auth/PersonaPreviewSelect";
+import { useAccess } from "@/lib/permissions/useAccess";
 
 const commandItems = [
   { label: "Ir a Dashboard", shortcut: "D", action: "/agents" },
@@ -37,7 +38,6 @@ const commandItems = [
   { label: "Ir a Créditos", shortcut: "R", action: "/agents/credits" },
   { label: "Ir a Equipo (v2)", shortcut: "E", action: "/agents/team-v2" },
   { label: "Ir a Reportes", shortcut: "A", action: "/agents/reports" },
-  { label: "Ir a Configuración", shortcut: "S", action: "/agents/settings" },
 ];
 
 export function LovableAgentHeader() {
@@ -45,6 +45,15 @@ export function LovableAgentHeader() {
   const [searchValue, setSearchValue] = useState("");
   const [notifications, setNotifications] = useState(mockNotifications);
   const navigate = useNavigate();
+  const location = useLocation();
+  const access = useAccess();
+  const settingsRoute = location.pathname.startsWith("/agents/team-v2") && access.can("manage_team_settings")
+    ? "/agents/team-v2/settings"
+    : "/agents/settings";
+  const navigationItems = useMemo(
+    () => [...commandItems, { label: "Ir a Configuración", shortcut: "S", action: settingsRoute }],
+    [settingsRoute]
+  );
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -148,7 +157,7 @@ export function LovableAgentHeader() {
           <CommandList>
             <CommandEmpty>No hay resultados.</CommandEmpty>
             <CommandGroup heading="Navegación">
-              {commandItems.map((item) => (
+              {navigationItems.map((item) => (
                 <CommandItem
                   key={item.action}
                   onSelect={() => {

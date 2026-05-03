@@ -28,7 +28,9 @@ import AgentLeadReport from "./pages/agents/reports-leads";
 import AgentTeamReport from "./pages/agents/reports-team";
 import AgentTeam from "./pages/agents/team";
 import AgentTeamV2 from "./pages/agents/team-v2";
+import AgentTeamV2Settings from "./pages/agents/team-v2-settings";
 import AgentTeamMemberDetailV2 from "./pages/agents/team-member-detail-v2";
+import AgentTeamV2WorkspaceLayout from "./pages/agents/team-v2-workspace-layout";
 import AgentSettings from "./pages/agents/settings";
 import AgentRoadmap from "./pages/agents/roadmap";
 import AgentNotifications from "./pages/agents/notifications";
@@ -100,8 +102,11 @@ const App = () => {
 
             {/* Lovable reference layout (v2) – start with Equipo */}
             <Route path="/agents/team-v2" element={<AgentErrorBoundary><LovableAgentLayout /></AgentErrorBoundary>}>
-              <Route index element={<AccessGate cap="view_team"><AgentTeamV2 /></AccessGate>} />
-              <Route path="member/:id" element={<AccessGate cap="view_team"><AgentTeamMemberDetailV2 /></AccessGate>} />
+              <Route element={<AgentTeamV2WorkspaceLayout />}>
+                <Route index element={<AccessGate cap="view_team"><AgentTeamV2 /></AccessGate>} />
+                <Route path="settings" element={<AccessGate cap="manage_team_settings"><AgentTeamV2Settings /></AccessGate>} />
+                <Route path="member/:id" element={<AccessGate cap="view_team"><AgentTeamMemberDetailV2 /></AccessGate>} />
+              </Route>
             </Route>
 
             <Route path="*" element={<NotFound />} />

@@ -29,7 +29,6 @@ import {
   Phone,
   MoreHorizontal,
   AlertTriangle,
-  FlaskConical,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -61,7 +60,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { RoutingRuleForm } from './RoutingRuleForm';
-import { RoutingSimulator } from './RoutingSimulator';
 import { LeadRoutingRule, LeadSource } from '@/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -299,7 +297,6 @@ export function RoutingRulesTable({ rules, agents, onRulesChange }: RoutingRules
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<LeadRoutingRule | null>(null);
   const [deleteRuleId, setDeleteRuleId] = useState<string | null>(null);
-  const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
 
   const conflictsMap = useMemo(() => detectConflicts(rules), [rules]);
@@ -395,10 +392,6 @@ export function RoutingRulesTable({ rules, agents, onRulesChange }: RoutingRules
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setSimulatorOpen(true)}>
-                <FlaskConical className="mr-2 h-4 w-4" />
-                Probar Ruteo
-              </Button>
               <Button onClick={handleOpenCreate}>
                 <Plus className="mr-2 h-4 w-4" />
                 Crear Regla
@@ -482,14 +475,6 @@ export function RoutingRulesTable({ rules, agents, onRulesChange }: RoutingRules
         teamAgents={agents}
         onSave={handleSave}
       />
-
-      <RoutingSimulator
-        open={simulatorOpen}
-        onOpenChange={setSimulatorOpen}
-        rules={rules}
-        agents={agents}
-      />
-
       <AlertDialog open={!!deleteRuleId} onOpenChange={() => setDeleteRuleId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

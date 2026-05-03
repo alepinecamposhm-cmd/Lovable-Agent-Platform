@@ -5,6 +5,7 @@ export type Capability =
   | 'view_leads'
   | 'view_listings'
   | 'view_team'
+  | 'manage_team_settings'
   | 'manage_team_invites'
   | 'manage_team_roles'
   | 'transfer_leadership'
@@ -31,6 +32,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   'view_leads',
   'view_listings',
   'view_team',
+  'manage_team_settings',
   'manage_team_invites',
   'manage_team_roles',
   'transfer_leadership',

@@ -65,6 +65,9 @@ export function LovableAgentSidebar() {
   const isCollapsed = state === "collapsed";
   const user = getCurrentUser();
   const access = useAccess();
+  const settingsRoute = location.pathname.startsWith("/agents/team-v2") && access.can("manage_team_settings")
+    ? "/agents/team-v2/settings"
+    : "/agents/settings";
   const visibleComparisonItems = isPreviewEnabled()
     ? comparisonNavItems.filter((item) => access.can(item.cap))
     : [];
@@ -209,7 +212,7 @@ export function LovableAgentSidebar() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => navigate("/agents/settings")}
+              onClick={() => navigate(settingsRoute)}
               className="h-8 w-8"
               aria-label="Configuración"
             >

@@ -12,7 +12,7 @@ export { MemberMetricsCard } from './MemberMetricsCard';
 export { MemberConfigCard } from './MemberConfigCard';
 export { TransferLeadershipDialog } from './TransferLeadershipDialog';
 export { ChangeRoleDialog } from './ChangeRoleDialog';
-export { TeamSettingsSheet } from './TeamSettingsSheet';
+export { TeamSettingsForm } from './TeamSettingsForm';
 export { ReassignLeadsDialog } from './ReassignLeadsDialog';
 export { TeamActivityLog } from './TeamActivityLog';
 export { MemberActivityTimeline } from './MemberActivityTimeline';

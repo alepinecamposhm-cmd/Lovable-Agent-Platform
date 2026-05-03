@@ -2,7 +2,6 @@ import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users,
-  Plus,
   Settings,
   MoreVertical,
   Crown,
@@ -18,6 +17,7 @@ import {
   Activity,
   ArrowLeftRight,
   StickyNote,
+  UserPlus,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,43 +33,25 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
-  mockTeam,
-  mockRoutingRules,
-  mockPendingInvitations,
   mockTeamPerformance,
-  mockTeamActivity,
-  mockLeads,
 } from '@/data/mockData';
-import { TeamMemberRole, TeamMemberStatus, LeadRoutingRule, TeamActivityEvent } from '@/types';
+import { TeamMemberRole, TeamMemberStatus } from '@/types';
 import { RoutingRulesTable } from '@/components/team/RoutingRulesTable';
 import { PerformanceTable } from '@/components/team/PerformanceTable';
 import type { PerformanceTimeframe, TeamPerformanceData } from '@/components/team/PerformanceTable';
-import { PendingInvitations, PendingInvitation } from '@/components/team/PendingInvitations';
 import { PauseMemberDialog, ActivateMemberDialog } from '@/components/team/PauseMemberDialog';
 import { RemoveMemberDialog } from '@/components/team/RemoveMemberDialog';
 import { TransferLeadershipDialog } from '@/components/team/TransferLeadershipDialog';
 import { ChangeRoleDialog } from '@/components/team/ChangeRoleDialog';
-import { TeamSettingsSheet } from '@/components/team/TeamSettingsSheet';
 import { ReassignLeadsDialog } from '@/components/team/ReassignLeadsDialog';
 import { TeamActivityLog } from '@/components/team/TeamActivityLog';
 import { TeamPlanLimitBadge } from '@/components/team/TeamPlanLimitBadge';
@@ -81,15 +63,11 @@ import { WorkloadIndicator } from '@/components/team/WorkloadIndicator';
 import { getNoteForMember } from '@/components/team/MemberNotesCard';
 import { ScheduleCompactDots } from '@/components/team/AgentScheduleGrid';
 import { AgentComparisonSheet } from '@/components/team/AgentComparisonSheet';
-import { TeamProfileCard } from '@/components/team/TeamProfileCard';
 import { currentAgent } from '@/data/mockData';
 import { toast } from 'sonner';
 import type { WeeklySchedule } from '@/types';
 import { useAccess } from '@/lib/permissions/useAccess';
-import {
-  buildTeamWorkloadMetrics,
-  getTeamWorkloadToneClasses,
-} from '@/lib/team/buildTeamWorkloadMetrics';
+import { useTeamV2Workspace } from '@/lib/team/teamV2Workspace';
 
 const roleConfig: Record<TeamMemberRole, { label: string; icon: React.ReactNode; color: string }> = {
   lider: { label: 'Líder', icon: <Crown className="h-4 w-4" />, color: 'text-yellow-500' },
@@ -102,90 +80,6 @@ const statusConfig: Record<TeamMemberStatus, { label: string; color: string }> =
   pausado: { label: 'Pausado', color: 'bg-yellow-500' },
   invitado: { label: 'Invitado', color: 'bg-blue-500' },
 };
-
-// Mock team agents data
-const initialTeamAgents = [
-  {
-    id: 'agent-001',
-    name: 'Carlos Martínez',
-    email: 'carlos.martinez@inmobiliaria.mx',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos',
-    role: 'lider' as TeamMemberRole,
-    status: 'activo' as TeamMemberStatus,
-    leadRoutingWeight: 40,
-    leadsThisMonth: 12,
-    conversionRate: 18,
-  },
-  {
-    id: 'agent-002',
-    name: 'Laura Sánchez',
-    email: 'laura.sanchez@inmobiliaria.mx',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Laura',
-    role: 'agente' as TeamMemberRole,
-    status: 'activo' as TeamMemberStatus,
-    leadRoutingWeight: 35,
-    leadsThisMonth: 8,
-    conversionRate: 22,
-  },
-  {
-    id: 'agent-003',
-    name: 'Miguel Rodríguez',
-    email: 'miguel.rodriguez@inmobiliaria.mx',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Miguel',
-    role: 'agente' as TeamMemberRole,
-    status: 'pausado' as TeamMemberStatus,
-    leadRoutingWeight: 25,
-    leadsThisMonth: 0,
-    conversionRate: 15,
-  },
-
-  {
-    id: 'agent-004',
-    name: 'Sofía Torres',
-    email: 'sofia.torres@inmobiliaria.mx',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sofia',
-    role: 'agente' as TeamMemberRole,
-    status: 'activo' as TeamMemberStatus,
-    leadRoutingWeight: 0,
-    leadsThisMonth: 6,
-    conversionRate: 19,
-  },
-  {
-    id: 'agent-005',
-    name: 'Pedro García',
-    email: 'pedro.garcia@inmobiliaria.mx',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Pedro',
-    role: 'admin' as TeamMemberRole,
-    status: 'activo' as TeamMemberStatus,
-    leadRoutingWeight: 0,
-    leadsThisMonth: 4,
-    conversionRate: 16,
-  },
-  {
-    id: 'agent-006',
-    name: 'Javier Soto',
-    email: 'javier.soto@inmobiliaria.mx',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Javier',
-    role: 'agente' as TeamMemberRole,
-    status: 'activo' as TeamMemberStatus,
-    leadRoutingWeight: 0,
-    leadsThisMonth: 3,
-    conversionRate: 14,
-  },
-  {
-    id: 'agent-007',
-    name: 'Lucía Reyes',
-    email: 'lucia.reyes@inmobiliaria.mx',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucia',
-    role: 'agente' as TeamMemberRole,
-    status: 'activo' as TeamMemberStatus,
-    leadRoutingWeight: 0,
-    leadsThisMonth: 2,
-    conversionRate: 11,
-  },
-];
-
-const DEFAULT_TEAM_NAME = 'Equipo de Carlos Martínez';
 
 const TIMEFRAME_SCALE: Record<PerformanceTimeframe, number> = {
   day: 1,
@@ -207,17 +101,29 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 export default function TeamV2() {
   const navigate = useNavigate();
   const access = useAccess();
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'agente' | 'admin'>('agente');
-  const [agents, setAgents] = useState(initialTeamAgents);
-  const [routingRules, setRoutingRules] = useState<LeadRoutingRule[]>(mockRoutingRules);
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>(
-    mockPendingInvitations.map((i) => ({
-      ...i,
-      role: i.role as TeamMemberRole,
-    }))
-  );
+  const {
+    DEFAULT_TEAM_NAME,
+    TEAM_PLAN_LIMIT,
+    agents,
+    setAgents,
+    activeAgents,
+    currentLeader,
+    isLeader,
+    isAtLimit,
+    totalLeads,
+    routingRules,
+    setRoutingRules,
+    teamSettings,
+    activityLog,
+    addActivityEvent,
+    resolveLeadLimit,
+    agentActiveLeads,
+    workloadAgents,
+    teamWorkloadMetrics,
+    teamWorkloadTone,
+    hasCustomWeights,
+    getAgentLeadsCount,
+  } = useTeamV2Workspace();
   const [routingSubTab, setRoutingSubTab] = useState<'weights' | 'rules'>('weights');
   const [activeTab, setActiveTab] = useState('members');
 
@@ -227,51 +133,18 @@ export default function TeamV2() {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false);
-  const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<typeof agents[0] | null>(null);
+  const [selectedMember, setSelectedMember] = useState<(typeof agents)[number] | null>(null);
 
   // Bulk selection state
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
-  
-  // Team settings state
-  const [teamSettings, setTeamSettings] = useState({
-    name: mockTeam.name,
-    description: '',
-    defaultLeadLimit: 10,
-  });
-
-  // Activity log state
-  const [activityLog, setActivityLog] = useState<TeamActivityEvent[]>(mockTeamActivity);
 
   // Onboarding tracking
   const [hasVisitedPerformance, setHasVisitedPerformance] = useState(false);
 
   // Sprint 9 state
   const [comparisonSheetOpen, setComparisonSheetOpen] = useState(false);
-  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
   const [performanceTimeframe, setPerformanceTimeframe] = useState<PerformanceTimeframe>('month');
-  const leadLimitByAgent = useMemo<Record<string, number>>(
-    () => ({
-      // Force clear capacity states in V2 mock:
-      // Carlos 1/14 (low), Sofia 2/2 (overload), Pedro 1/9 (low).
-      'agent-001': 14,
-      'agent-002': 12,
-      'agent-003': 10,
-      'agent-004': 2,
-      'agent-005': 9,
-      'agent-006': 11,
-      'agent-007': 14,
-    }),
-    []
-  );
-
-  const resolveLeadLimit = useCallback((agentId: string) => {
-    const agentLeadLimit = leadLimitByAgent[agentId];
-    return (agentLeadLimit && agentLeadLimit > 0)
-      ? agentLeadLimit
-      : teamSettings.defaultLeadLimit;
-  }, [leadLimitByAgent, teamSettings.defaultLeadLimit]);
 
   // Mock schedules for agents
   const [agentSchedules] = useState<Record<string, WeeklySchedule>>({
@@ -289,59 +162,6 @@ export default function TeamV2() {
       monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: [],
     },
   });
-
-  // Plan limit
-  const TEAM_PLAN_LIMIT = 5;
-  const isAtLimit = agents.length >= TEAM_PLAN_LIMIT;
-  const isLeader = agents.find((a) => a.id === 'agent-001')?.role === 'lider';
-
-  const totalLeads = agents.reduce((sum, a) => sum + a.leadsThisMonth, 0);
-  const activeAgents = agents.filter((a) => a.status === 'activo');
-
-  // Workload calculation
-  
-  // Mock override SOLO para probar "Carga del Equipo" en V2 sin tocar mockData global (V1 no se afecta)
-  const leadAssigneeOverride = useMemo<Record<string, string>>(
-    () => ({
-      'lead-001': 'agent-001',
-      'lead-002': 'agent-004',
-      'lead-003': 'agent-004',
-      'lead-004': 'agent-005',
-      'lead-005': 'agent-006',
-      'lead-006': 'agent-007',
-    }),
-    []
-  );
-
-const agentActiveLeads = useMemo(() => {
-    const counts: Record<string, number> = {};
-    agents.forEach((a) => {
-      counts[a.id] = mockLeads.filter(
-        (l) => (leadAssigneeOverride[l.id] ?? l.assignedAgentId) === a.id && l.stage !== 'cerrado' && l.stage !== 'perdido'
-      ).length;
-    });
-    return counts;
-  }, [agents, leadAssigneeOverride]);
-
-  const workloadAgents = useMemo(() => {
-    return agents
-      .filter((a) => a.status !== "invitado")
-      .map((a) => ({
-        id: a.id,
-        name: a.name,
-        avatar: a.avatar,
-        activeLeads: agentActiveLeads[a.id] ?? 0,
-        leadLimit: resolveLeadLimit(a.id),
-      }));
-  }, [agents, agentActiveLeads, resolveLeadLimit]);
-  const teamWorkloadMetrics = useMemo(
-    () => buildTeamWorkloadMetrics(workloadAgents),
-    [workloadAgents]
-  );
-  const teamWorkloadTone = useMemo(
-    () => getTeamWorkloadToneClasses(teamWorkloadMetrics.tone),
-    [teamWorkloadMetrics.tone]
-  );
   const teamCapacityChip = useMemo(() => {
     if (teamWorkloadMetrics.overloadedAgentsCount > 0) {
       return {
@@ -437,37 +257,6 @@ const agentActiveLeads = useMemo(() => {
     toast.success(`Rol actualizado para ${ids.length} agente${ids.length > 1 ? 's' : ''}`);
   };
 
-  const handleInvite = () => {
-    if (!inviteEmail.trim()) return;
-
-    const newInvitation: PendingInvitation = {
-      id: `invite-${Date.now()}`,
-      email: inviteEmail,
-      role: inviteRole,
-      sentAt: new Date(),
-    };
-    setPendingInvitations([...pendingInvitations, newInvitation]);
-    toast.success(`Invitación enviada a ${inviteEmail}`);
-    setInviteEmail('');
-    setInviteRole('agente');
-    setIsInviteOpen(false);
-  };
-
-  const handleCancelInvitation = (id: string) => {
-    setPendingInvitations(pendingInvitations.filter((i) => i.id !== id));
-  };
-
-  const handleResendInvitation = (id: string) => {
-    const invitation = pendingInvitations.find((i) => i.id === id);
-    if (invitation) {
-      setPendingInvitations(
-        pendingInvitations.map((i) =>
-          i.id === id ? { ...i, sentAt: new Date() } : i
-        )
-      );
-    }
-  };
-
   const handlePauseMember = (memberId: string, reassignTo?: string) => {
     setAgents(agents.map((a) => (a.id === memberId ? { ...a, status: 'pausado' as TeamMemberStatus } : a)));
     toast.success(`Agente pausado correctamente`);
@@ -514,18 +303,6 @@ const agentActiveLeads = useMemo(() => {
     setChangeRoleDialogOpen(true);
   };
 
-  // Get the current leader
-  const currentLeader = agents.find((a) => a.role === 'lider');
-
-  // Count leads for reassignment
-  const getAgentLeadsCount = (agentId: string) => {
-    const activeLeads = mockLeads.filter(
-      (l) => l.assignedAgentId === agentId && l.stage !== 'cerrado' && l.stage !== 'perdido'
-    );
-    const uncontactedLeads = activeLeads.filter((l) => l.stage === 'nuevo');
-    return { active: activeLeads.length, uncontacted: uncontactedLeads.length };
-  };
-
   // Handlers for features
   const handleTransferLeadership = (newLeaderId: string) => {
     const newLeader = agents.find((a) => a.id === newLeaderId);
@@ -546,11 +323,6 @@ const agentActiveLeads = useMemo(() => {
     toast.success(`Rol de ${member?.name} cambiado a ${roleConfig[newRole].label}`);
   };
 
-  const handleSaveSettings = (settings: { name: string; description: string }) => {
-    setTeamSettings((prev) => ({ ...prev, ...settings }));
-    toast.success('Configuración del equipo actualizada');
-  };
-
   const handleResetPassword = (memberName: string, memberEmail: string) => {
     addActivityEvent('member_updated', `Se envió enlace de restablecimiento a ${memberName}`, undefined, undefined, memberName);
     toast.success(`Link de restablecimiento enviado a ${memberEmail}`);
@@ -565,32 +337,6 @@ const agentActiveLeads = useMemo(() => {
     toast.success(`${count} leads reasignados a ${toAgent?.name}`);
   };
 
-  const addActivityEvent = (
-    type: TeamActivityEvent['type'],
-    description: string,
-    details?: string,
-    targetId?: string,
-    targetName?: string
-  ) => {
-    const newEvent: TeamActivityEvent = {
-      id: `activity-${Date.now()}`,
-      teamId: 'team-001',
-      type,
-      description,
-      details,
-      actorId: 'agent-001',
-      actorName: 'Carlos Martínez',
-      actorAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos',
-      targetId,
-      targetName,
-      timestamp: new Date(),
-    };
-    setActivityLog((prev) => [newEvent, ...prev]);
-  };
-
-  // Onboarding checklist detection
-  const hasCustomWeights = agents.some((a) => a.leadRoutingWeight !== 33 && a.leadRoutingWeight !== 34);
-
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       {/* Header */}
@@ -601,78 +347,19 @@ const agentActiveLeads = useMemo(() => {
             Gestiona tu equipo y distribuye leads
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={() => setProfileSheetOpen(true)} aria-label="Ver perfil del equipo">
-            <Users className="h-4 w-4" />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => navigate('/agents/team-v2/settings#invitations')}
+            title={isAtLimit ? 'Abrir invitaciones y revisar límite del plan' : 'Abrir invitaciones en ajustes'}
+          >
+            <UserPlus className="mr-2 h-4 w-4" />
+            Invitar agente
           </Button>
-          <Button variant="outline" onClick={() => setSettingsSheetOpen(true)}>
+          <Button variant="outline" onClick={() => navigate('/agents/team-v2/settings')}>
             <Settings className="mr-2 h-4 w-4" />
             Configuración
           </Button>
-          <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-            <DialogTrigger asChild>
-              {isAtLimit ? (
-                <div className="relative group">
-                  <Button disabled>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Invitar Agente
-                  </Button>
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-popover text-popover-foreground text-xs rounded-md border shadow-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                    Límite de miembros alcanzado
-                  </div>
-                </div>
-              ) : (
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Invitar Agente
-                  {pendingInvitations.length > 0 && (
-                    <Badge variant="secondary" className="ml-2">
-                      {pendingInvitations.length}
-                    </Badge>
-                  )}
-                </Button>
-              )}
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Invitar Agente al Equipo</DialogTitle>
-                <DialogDescription>
-                  Envía una invitación por email para unirse al equipo
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    placeholder="agente@email.com"
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Rol</Label>
-                  <select
-                    className="w-full h-10 rounded-md border border-input bg-background px-3"
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as 'agente' | 'admin')}
-                  >
-                    <option value="agente">Agente</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsInviteOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleInvite} disabled={!inviteEmail.trim()}>
-                  <Mail className="mr-2 h-4 w-4" />
-                  Enviar Invitación
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
 
@@ -685,8 +372,8 @@ const agentActiveLeads = useMemo(() => {
           hasCustomWeights={hasCustomWeights}
           routingRulesCount={routingRules.length}
           hasVisitedPerformance={hasVisitedPerformance}
-          onInvite={() => setIsInviteOpen(true)}
-          onSettings={() => setSettingsSheetOpen(true)}
+          onInvite={() => navigate('/agents/team-v2/settings#invitations')}
+          onSettings={() => navigate('/agents/team-v2/settings')}
           onGoToRouting={() => {
             setActiveTab('routing');
             setRoutingSubTab('rules');
@@ -780,13 +467,6 @@ const agentActiveLeads = useMemo(() => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Pending Invitations */}
-      <PendingInvitations
-        invitations={pendingInvitations}
-        onCancel={handleCancelInvitation}
-        onResend={handleResendInvitation}
-      />
 
       <div className="mt-2">
       <Tabs value={activeTab} onValueChange={(v) => {
@@ -1196,13 +876,6 @@ const agentActiveLeads = useMemo(() => {
         onConfirm={handleChangeRole}
       />
 
-      <TeamSettingsSheet
-        open={settingsSheetOpen}
-        onOpenChange={setSettingsSheetOpen}
-        settings={teamSettings}
-        onSave={handleSaveSettings}
-      />
-
       <ReassignLeadsDialog
         open={reassignDialogOpen}
         onOpenChange={setReassignDialogOpen}
@@ -1218,20 +891,6 @@ const agentActiveLeads = useMemo(() => {
         open={comparisonSheetOpen}
         onOpenChange={setComparisonSheetOpen}
         agents={mockTeamPerformance}
-      />
-
-      {/* Sprint 9: Team Profile */}
-      <TeamProfileCard
-        open={profileSheetOpen}
-        onOpenChange={setProfileSheetOpen}
-        teamName={teamSettings.name}
-        teamDescription={teamSettings.description}
-        agents={agents.map((a) => ({ id: a.id, name: a.name, avatar: a.avatar, status: a.status, role: a.role }))}
-        stats={{
-          activeMembers: activeAgents.length,
-          totalLeads,
-          avgResponseRate: Math.round(agents.reduce((sum, a) => sum + a.conversionRate, 0) / agents.length),
-        }}
       />
     </div>
   );
